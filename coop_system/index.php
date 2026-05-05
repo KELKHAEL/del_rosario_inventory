@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cooperative DBMS</title>
-    <link rel="stylesheet" href="css/style.css">
-    <!-- Using a clean Google Font for better UI/UX -->
+    <link rel="stylesheet" href="css/styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -18,7 +17,7 @@
             </div>
             <nav class="sidebar-menu">
                 <a href="membership.php" class="menu-btn active">MEMBERSHIP FORM</a>
-                <a href="#" class="menu-btn">TRANSACTIONS</a>
+                <a href="transactions.php" class="menu-btn">TRANSACTIONS</a>
                 <a href="#" class="menu-btn">INVENTORY MANAGEMENT</a>
                 <a href="#" class="menu-btn">DATABASE MANAGEMENT SYSTEM</a>
             </nav>

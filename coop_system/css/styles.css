@@ -46,3 +46,12 @@ body { background-color: #f4f7f6; color: #333; }
 /* Option Groups (Checkboxes) */
 .radio-group { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 10px; border: 1px solid #ccc; border-radius: 4px;}
 .radio-item { display: flex; align-items: center; gap: 8px; font-size: 14px;}
+
+/* --- DATA TABLES (For Transactions & Inventory) --- */
+.data-table-container { overflow-x: auto; margin-top: 20px; }
+.data-table { width: 100%; border-collapse: collapse; text-align: left; }
+.data-table th, .data-table td { padding: 15px; border-bottom: 1px solid #eee; }
+.data-table th { background-color: #f8f9fa; color: #555; font-weight: 600; text-transform: uppercase; font-size: 13px; letter-spacing: 0.5px;}
+.data-table tr:hover { background-color: #f4f7f6; }
+.badge-share { background-color: #e3f2fd; color: #1565c0; padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: bold;}
+.badge-fee { background-color: #f3e5f5; color: #6a1b9a; padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: bold;}
