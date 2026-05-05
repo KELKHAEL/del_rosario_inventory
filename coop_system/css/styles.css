@@ -1,0 +1,48 @@
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+body { background-color: #f4f7f6; color: #333; }
+
+/* Dashboard Layout */
+.dashboard-container { display: flex; height: 100vh; }
+.sidebar { width: 280px; background-color: #ffffff; border-right: 1px solid #ddd; display: flex; flex-direction: column; padding: 20px; }
+.logo-container { height: 100px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; margin-bottom: 40px; font-weight: bold; font-size: 24px;}
+.sidebar-menu { display: flex; flex-direction: column; gap: 15px; }
+.menu-btn { padding: 15px; text-decoration: none; color: #333; border: 1px solid #ccc; text-align: center; font-weight: 600; transition: all 0.3s ease; }
+.menu-btn:hover, .menu-btn.active { background-color: #6a1b9a; color: white; border-color: #6a1b9a; }
+
+.main-content { flex: 1; padding: 40px; overflow-y: auto; }
+.top-action-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+.page-title { font-size: 24px; color: #444; }
+.action-buttons { display: flex; gap: 15px; align-items: center; }
+.upload-form { display: flex; gap: 10px; }
+.btn { padding: 10px 20px; border: 1px solid #ccc; background-color: white; cursor: pointer; font-weight: 600; transition: 0.3s; border-radius: 4px;}
+.btn:hover { background-color: #e0e0e0; }
+.btn-primary { background-color: #2e7d32; color: white; border: none; }
+.btn-primary:hover { background-color: #1b5e20; }
+.content-display { background-color: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); min-height: 500px; }
+
+/* --- MEMBERSHIP FORM SPECIFIC STYLES --- */
+.form-header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #6a1b9a; padding-bottom: 10px;}
+.form-header h2 { color: #6a1b9a; font-size: 22px;}
+.form-section { margin-bottom: 25px; }
+.form-section h4 { background-color: #f0f0f0; padding: 8px; margin-bottom: 15px; border-left: 4px solid #6a1b9a; }
+
+/* CSS Grid to mimic the paper layout */
+.form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 15px; }
+.form-grid.two-col { grid-template-columns: repeat(2, 1fr); }
+.form-grid.one-col { grid-template-columns: 1fr; }
+
+.input-group { display: flex; flex-direction: column; gap: 5px; }
+.input-group label { font-size: 13px; font-weight: 600; color: #555; }
+.input-group input, .input-group select { padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+.input-group input:focus, .input-group select:focus { border-color: #6a1b9a; outline: none; }
+
+/* Beneficiaries Table */
+.ben-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+.ben-table th, .ben-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+.ben-table th { background-color: #f9f9f9; font-size: 14px; }
+.ben-table input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+.btn-danger { background-color: #c62828; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 4px;}
+
+/* Option Groups (Checkboxes) */
+.radio-group { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 10px; border: 1px solid #ccc; border-radius: 4px;}
+.radio-item { display: flex; align-items: center; gap: 8px; font-size: 14px;}
