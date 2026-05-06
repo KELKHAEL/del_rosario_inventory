@@ -33,13 +33,11 @@
                 <h1 class="page-title">Membership Management</h1>
                 
                 <div class="action-buttons">
-                    <!-- Excel Upload Form -->
-                    <form action="#" method="POST" enctype="multipart/form-data" class="upload-form">
-                        <input type="file" name="excel_file" accept=".xls,.xlsx" required style="padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-                        <button type="submit" class="btn btn-primary" onclick="alert('Excel Parsing script will be attached here.')">UPLOAD EXCEL</button>
+                    <form action="import_excel.php" method="POST" enctype="multipart/form-data" class="upload-form" style="display: flex; gap: 10px; align-items: center;">
+                        <input type="file" name="excel_file" accept=".xls,.xlsx" required>
+                        <button type="submit" class="btn btn-primary">UPLOAD EXCEL</button>
                     </form>
                     
-                    <!-- Add New Member Button routes to your form -->
                     <a href="membership.php" class="btn btn-primary" style="text-decoration: none;">+ ADD NEW MEMBER</a>
                 </div>
             </div>
@@ -51,44 +49,40 @@
                         <thead>
                             <tr>
                                 <th>ID</th>
-                                <th>Full Name (Last, First, Middle)</th>
-                                <th>Date of Birth</th>
-                                <th>Civil Status</th>
+                                <th>Member Name</th>
+                                <th>Sex</th>
                                 <th>Occupation</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php
-                            // Fetch all members from the database
                             $sql = "SELECT * FROM members ORDER BY member_id DESC";
                             $result = $conn->query($sql);
 
                             if ($result && $result->num_rows > 0) {
                                 while($row = $result->fetch_assoc()) {
-                                    // Format the ID to look like the paper form (e.g., #26-001)
                                     $formatted_id = "#26-" . str_pad($row['member_id'], 3, '0', STR_PAD_LEFT);
                                     
-                                    // Construct the full name
+                                    // Construct the full name (Last Name, First Name format)
                                     $full_name = htmlspecialchars($row['last_name'] . ", " . $row['first_name'] . " " . $row['middle_name']);
                                     
-                                    // Format the date
-                                    $dob = date('M d, Y', strtotime($row['date_of_birth']));
+                                    // Clean up empty spaces if middle name is missing
+                                    $full_name = trim(str_replace('  ', ' ', $full_name));
 
                                     echo "<tr>
                                             <td><strong>{$formatted_id}</strong></td>
-                                            <td>{$full_name}</td>
-                                            <td>{$dob}</td>
-                                            <td>" . htmlspecialchars($row['civil_status']) . "</td>
-                                            <td>" . htmlspecialchars($row['occupation']) . "</td>
-                                            <td>
+                                            <td style='text-transform: capitalize;'>{$full_name}</td>
+                                            <td>" . htmlspecialchars($row['sex'] ?? 'N/A') . "</td>
+                                            <td>" . htmlspecialchars($row['occupation'] ?? 'N/A') . "</td>
+                                            <td style='display: flex; gap: 8px;'>
+                                                <a href='view_member.php?id={$row['member_id']}' class='btn btn-secondary' style='padding: 5px 10px; font-size: 12px; text-decoration: none;'>VIEW</a>
                                                 <button class='btn btn-secondary' style='padding: 5px 10px; font-size: 12px;'>EDIT</button>
-                                                <button class='btn btn-secondary' style='padding: 5px 10px; font-size: 12px;'>PRINT</button>
                                             </td>
                                           </tr>";
                                 }
                             } else {
-                                echo "<tr><td colspan='6' style='text-align:center; padding: 40px; color:#888;'>No members found. Click '+ Add New Member' or Upload an Excel file to start.</td></tr>";
+                                echo "<tr><td colspan='5' style='text-align:center; padding: 60px; color:#888;'>No members found. Click '+ Add New Member' or Upload an Excel file to start.</td></tr>";
                             }
                             ?>
                         </tbody>
