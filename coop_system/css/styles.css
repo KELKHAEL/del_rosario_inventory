@@ -16,8 +16,14 @@ body { background-color: #f4f7f6; color: #333; }
 .upload-form { display: flex; gap: 10px; }
 .btn { padding: 10px 20px; border: 1px solid #ccc; background-color: white; cursor: pointer; font-weight: 600; transition: 0.3s; border-radius: 4px;}
 .btn:hover { background-color: #e0e0e0; }
-.btn-primary { background-color: #2e7d32; color: white; border: none; }
-.btn-primary:hover { background-color: #1b5e20; }
+.btn-primary { 
+    background-color: #6a1b9a; /* Cooperative Violet */
+    color: white; 
+    border: none; 
+}
+.btn-primary:hover { 
+    background-color: #4a148c; /* Darker Violet for hover effect */
+}
 .content-display { background-color: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); min-height: 500px; }
 
 /* --- MEMBERSHIP FORM SPECIFIC STYLES --- */
