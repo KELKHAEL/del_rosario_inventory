@@ -10,20 +10,19 @@
 <body>
 
     <div class="dashboard-container">
-        <!-- LEFT SIDEBAR -->
+        <!-- SIDEBAR -->
         <aside class="sidebar">
             <div class="logo-container">
-                <h2>LOGO</h2>
+                <img src="img/logo-removebg.png" alt="Coop Logo">
             </div>
+            
             <nav class="sidebar-menu">
                 <a href="index.php" class="menu-btn active">MEMBERSHIP DIRECTORY</a>
                 <a href="transactions.php" class="menu-btn">TRANSACTIONS</a>
                 <a href="inventory.php" class="menu-btn">INVENTORY MANAGEMENT</a>
-                <!-- Point of Sale / Cart Button -->
-                <a href="pos.php" class="menu-btn" style="background-color: #2e7d32; border-color: #2e7d32; color: white;">SELL / OUTSOURCE (CART)</a>
-                <!-- Outsourcing Logs -->
-                <a href="outsourcing_report.php" class="menu-btn" style="background-color: #f57c00; border-color: #f57c00; color: white;">OUTSOURCING LOGS</a>
-                <a href="#" class="menu-btn">DATABASE MANAGEMENT SYSTEM</a>
+                <a href="pos.php" class="menu-btn">SELL / OUTSOURCE (CART)</a>
+                <a href="outsourcing_report.php" class="menu-btn">OUTSOURCING LOGS</a>
+                <a href="#" class="menu-btn">DATABASE MANAGEMENT</a>
             </nav>
         </aside>
 
@@ -213,12 +212,12 @@
         }
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td><input type="text" name="ben_last_name[]" pattern="[A-Za-z\\s\\-]+" title="Letters only" required></td>
-            <td><input type="text" name="ben_first_name[]" pattern="[A-Za-z\\s\\-]+" title="Letters only" required></td>
-            <td><input type="text" name="ben_middle_name[]" pattern="[A-Za-z\\s\\-]+"></td>
+            <td><input type="text" name="ben_last_name[]" placeholder="Last Name" required></td>
+            <td><input type="text" name="ben_first_name[]" placeholder="First Name" required></td>
+            <td><input type="text" name="ben_middle_name[]" placeholder="M.I."></td>
             <td><input type="date" name="ben_dob[]"></td>
-            <td><input type="text" name="ben_rel[]" pattern="[A-Za-z\\s]+" title="Letters only" required></td>
-            <td style="text-align: center;"><button type="button" class="btn btn-danger" style="background-color: #c62828; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;" onclick="this.parentElement.parentElement.remove(); rowCount--;">X</button></td>
+            <td><input type="text" name="ben_rel[]" placeholder="e.g. Spouse" required></td>
+            <td><button type="button" class="btn-remove-row" title="Remove" onclick="this.closest('tr').remove(); rowCount--;">&#10005;</button></td>
         `;
         tbody.appendChild(tr);
         rowCount++;
