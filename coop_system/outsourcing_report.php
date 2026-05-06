@@ -74,6 +74,9 @@ if ($result && $result->num_rows > 0) {
                 <a href="index.php" class="menu-btn">MEMBERSHIP DIRECTORY</a>
                 <a href="transactions.php" class="menu-btn">TRANSACTIONS</a>
                 <a href="inventory.php" class="menu-btn">INVENTORY MANAGEMENT</a>
+                <!-- Point of Sale / Cart Button -->
+                <a href="pos.php" class="menu-btn" style="background-color: #2e7d32; border-color: #2e7d32; color: white;">SELL / OUTSOURCE (CART)</a>
+                <!-- Outsourcing Logs -->
                 <a href="outsourcing_report.php" class="menu-btn active" style="background-color: #f57c00; border-color: #f57c00; color: white;">OUTSOURCING LOGS</a>
                 <a href="#" class="menu-btn">DATABASE MANAGEMENT SYSTEM</a>
             </nav>

@@ -47,6 +47,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
                 <!-- NEW POS BUTTON -->
                 <a href="pos.php" class="menu-btn active" style="background-color: #2e7d32; border-color: #2e7d32; color: white;">SELL / OUTSOURCE (CART)</a>
                 <a href="outsourcing_report.php" class="menu-btn" style="background-color: #f57c00; border-color: #f57c00; color: white;">OUTSOURCING LOGS</a>
+                <a href="#" class="menu-btn">DATABASE MANAGEMENT SYSTEM</a>
             </nav>
         </aside>
 
@@ -60,9 +61,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
                 <!-- LEFT: PRODUCT GRID -->
                 <div class="products-area">
                     <?php
+                    // Fetch products that are actually in stock
                     $res = $conn->query("SELECT * FROM inventory WHERE current_quantity > 0 ORDER BY product_name ASC");
-                    if ($res->num_rows > 0) {
-                        while($row = $result->fetch_assoc() ?? $res->fetch_assoc()) {
+                    
+                    if ($res && $res->num_rows > 0) {
+                        // FIXED TYPO HERE: Changed $result to $res
+                        while($row = $res->fetch_assoc()) {
                             echo "
                             <div class='product-card'>
                                 <h4 style='text-transform: capitalize;'>" . htmlspecialchars($row['product_name']) . "</h4>
@@ -76,7 +80,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
                             </div>";
                         }
                     } else {
-                        echo "<p>No products in stock.</p>";
+                        echo "<p style='grid-column: span 3; color: #888;'>No products currently in stock. Please add inventory first.</p>";
                     }
                     ?>
                 </div>
@@ -93,11 +97,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
                     <div class="cart-total">Total: ₱<span id="cart-total-price">0.00</span></div>
 
                     <form action="pos.php" method="POST" id="checkoutForm">
+                        <!-- Hidden input to hold checkout data -->
+                        <input type="hidden" name="checkout" value="1">
                         <input type="hidden" name="cart_data" id="cart_data">
                         
                         <div class="input-group" style="margin-bottom: 15px;">
                             <label>Payment Method</label>
-                            <select name="payment_method" required style="font-weight: bold; border-color: #2e7d32;">
+                            <select name="payment_method" required style="font-weight: bold; border-color: #2e7d32; padding: 12px; border-radius: 6px; width: 100%;">
                                 <option value="Cash">Cash Payment</option>
                                 <option value="GCash">GCash Transfer</option>
                             </select>
@@ -116,8 +122,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
 
         function addToCart(id, name, price, maxQty) {
             if (cart[id]) {
-                if (cart[id].qty < maxQty) cart[id].qty++;
-                else alert("Cannot exceed current stock!");
+                if (cart[id].qty < maxQty) {
+                    cart[id].qty++;
+                } else {
+                    alert("Cannot exceed current stock limit of " + maxQty + "!");
+                }
             } else {
                 cart[id] = { name: name, price: price, qty: 1, max: maxQty };
             }
@@ -169,10 +178,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
 
         function processCheckout() {
             if (Object.keys(cart).length === 0) {
-                alert("Your cart is empty!");
+                alert("Your cart is empty! Please add products first.");
                 return;
             }
-            // Convert cart object to array for PHP
+            // Convert cart object to array for PHP processing
             const cartArray = Object.keys(cart).map(id => ({ id: id, qty: cart[id].qty }));
             document.getElementById('cart_data').value = JSON.stringify(cartArray);
             document.getElementById('checkoutForm').submit();
