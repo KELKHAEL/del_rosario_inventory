@@ -5,6 +5,7 @@ include 'db.php';
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
     $cart = json_decode($_POST['cart_data'], true);
     $payment = $conn->real_escape_string($_POST['payment_method']);
+    $receipt = $conn->real_escape_string($_POST['receipt_no']); // NEW: Capture Receipt
     $date = date('Y-m-d');
 
     if (!empty($cart)) {
@@ -15,9 +16,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
             // 1. Deduct from master inventory
             $conn->query("UPDATE inventory SET current_quantity = current_quantity - $qty WHERE product_id=$id");
             
-            // 2. Record the sale with the payment method
-            $conn->query("INSERT INTO inventory_outsourcing (record_date, product_id, quantity_out, payment_method) 
-                          VALUES ('$date', $id, $qty, '$payment')");
+            // 2. Record the sale with the payment method AND receipt number
+            $conn->query("INSERT INTO inventory_outsourcing (record_date, product_id, quantity_out, payment_method, receipt_no) 
+                          VALUES ('$date', $id, $qty, '$payment', '$receipt')");
         }
         echo "<script>alert('Checkout Successful!'); window.location.href='outsourcing_report.php';</script>";
         exit();
@@ -44,7 +45,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
                 <a href="index.php" class="menu-btn">MEMBERSHIP DIRECTORY</a>
                 <a href="transactions.php" class="menu-btn">TRANSACTIONS</a>
                 <a href="inventory.php" class="menu-btn">INVENTORY MANAGEMENT</a>
-                <!-- NEW POS BUTTON -->
                 <a href="pos.php" class="menu-btn active" style="background-color: #2e7d32; border-color: #2e7d32; color: white;">SELL / OUTSOURCE (CART)</a>
                 <a href="outsourcing_report.php" class="menu-btn" style="background-color: #f57c00; border-color: #f57c00; color: white;">OUTSOURCING LOGS</a>
                 <a href="#" class="menu-btn">DATABASE MANAGEMENT SYSTEM</a>
@@ -61,11 +61,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
                 <!-- LEFT: PRODUCT GRID -->
                 <div class="products-area">
                     <?php
-                    // Fetch products that are actually in stock
                     $res = $conn->query("SELECT * FROM inventory WHERE current_quantity > 0 ORDER BY product_name ASC");
                     
                     if ($res && $res->num_rows > 0) {
-                        // FIXED TYPO HERE: Changed $result to $res
                         while($row = $res->fetch_assoc()) {
                             echo "
                             <div class='product-card'>
@@ -90,23 +88,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
                     <h3 style="margin-bottom: 20px; border-bottom: 2px solid #6a1b9a; padding-bottom: 10px; color: #6a1b9a;">Current Cart</h3>
                     
                     <div id="cart-container">
-                        <!-- JS will inject items here -->
                         <p style="color: #888; text-align: center; font-size: 14px;">Cart is empty</p>
                     </div>
 
                     <div class="cart-total">Total: ₱<span id="cart-total-price">0.00</span></div>
 
                     <form action="pos.php" method="POST" id="checkoutForm">
-                        <!-- Hidden input to hold checkout data -->
                         <input type="hidden" name="checkout" value="1">
                         <input type="hidden" name="cart_data" id="cart_data">
                         
                         <div class="input-group" style="margin-bottom: 15px;">
                             <label>Payment Method</label>
-                            <select name="payment_method" required style="font-weight: bold; border-color: #2e7d32; padding: 12px; border-radius: 6px; width: 100%;">
+                            <select name="payment_method" id="payment_method" required style="font-weight: bold; border-color: #2e7d32; padding: 12px; border-radius: 6px; width: 100%;">
                                 <option value="Cash">Cash Payment</option>
                                 <option value="GCash">GCash Transfer</option>
                             </select>
+                        </div>
+
+                        <!-- NEW: Dynamic Receipt / Reference Number Field -->
+                        <div class="input-group" style="margin-bottom: 20px;">
+                            <label id="receipt_label" style="color: #d32f2f; font-weight: bold;">Reference No. or Invoice *</label>
+                            <input type="text" name="receipt_no" id="receipt_no" placeholder="Enter number here..." required style="padding: 12px; border-radius: 6px; width: 100%; border: 1px solid #ccc; font-weight: bold;">
                         </div>
 
                         <button type="button" class="btn btn-primary" style="width: 100%; background-color: #2e7d32; font-size: 16px; padding: 15px;" onclick="processCheckout()">CONFIRM CHECKOUT</button>
@@ -116,9 +118,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
         </main>
     </div>
 
-    <!-- PURE JAVASCRIPT CART LOGIC -->
     <script>
         let cart = {};
+
+        // Dynamic Label logic for GCash vs Cash
+        document.getElementById('payment_method').addEventListener('change', function() {
+            const label = document.getElementById('receipt_label');
+            if (this.value === 'GCash') {
+                label.innerText = 'Reference No. *';
+            } else {
+                label.innerText = 'Reference No. or Invoice *';
+            }
+        });
 
         function addToCart(id, name, price, maxQty) {
             if (cart[id]) {
@@ -150,8 +161,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
             const totalEl = document.getElementById('cart-total-price');
             container.innerHTML = '';
             let total = 0;
-
             let hasItems = false;
+
             for (let id in cart) {
                 hasItems = true;
                 const item = cart[id];
@@ -177,11 +188,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
         }
 
         function processCheckout() {
+            // Validate Cart
             if (Object.keys(cart).length === 0) {
                 alert("Your cart is empty! Please add products first.");
                 return;
             }
-            // Convert cart object to array for PHP processing
+            // Validate Receipt Number
+            const receiptField = document.getElementById('receipt_no');
+            if (receiptField.value.trim() === "") {
+                alert("Checkout Failed: You must provide a valid Reference or Invoice Number.");
+                receiptField.focus();
+                return;
+            }
+
             const cartArray = Object.keys(cart).map(id => ({ id: id, qty: cart[id].qty }));
             document.getElementById('cart_data').value = JSON.stringify(cartArray);
             document.getElementById('checkoutForm').submit();
