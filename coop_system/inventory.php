@@ -1,7 +1,7 @@
 <?php 
 include 'db.php'; 
 
-// CREATE FUNCTION: Handle adding a new product
+// 1. ADD / MERGE PRODUCT
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_product'])) {
     $name = $conn->real_escape_string($_POST['product_name']);
     $type = $conn->real_escape_string($_POST['product_type']);
@@ -9,20 +9,72 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_product'])) {
     $qty = (int)$_POST['quantity'];
     $price = (float)$_POST['price'];
 
-    $sql = "INSERT INTO inventory (product_name, product_type, quantity_type, current_quantity, price) 
-            VALUES ('$name', '$type', '$qty_type', '$qty', '$price')";
-    $conn->query($sql);
-    header("Location: inventory.php"); // Refresh page
+    $check_sql = "SELECT product_id FROM inventory WHERE product_name='$name' AND product_type='$type' AND quantity_type='$qty_type'";
+    $check_res = $conn->query($check_sql);
+
+    if ($check_res && $check_res->num_rows > 0) {
+        $update_sql = "UPDATE inventory SET current_quantity = current_quantity + $qty, price = '$price' WHERE product_name='$name' AND product_type='$type' AND quantity_type='$qty_type'";
+        $conn->query($update_sql);
+    } else {
+        $insert_sql = "INSERT INTO inventory (product_name, product_type, quantity_type, current_quantity, price) 
+                VALUES ('$name', '$type', '$qty_type', '$qty', '$price')";
+        $conn->query($insert_sql);
+    }
+    header("Location: inventory.php"); 
     exit();
 }
+
+// 2. EDIT PRODUCT
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['edit_product'])) {
+    $id = (int)$_POST['edit_id'];
+    $name = $conn->real_escape_string($_POST['edit_name']);
+    $qty = (int)$_POST['edit_qty'];
+    $price = (float)$_POST['edit_price'];
+
+    $conn->query("UPDATE inventory SET product_name='$name', current_quantity='$qty', price='$price' WHERE product_id=$id");
+    header("Location: inventory.php"); 
+    exit();
+}
+
+// 3. DELETE PRODUCT
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['delete_product'])) {
+    $id = (int)$_POST['delete_id'];
+    $conn->query("DELETE FROM inventory WHERE product_id=$id");
+    header("Location: inventory.php"); 
+    exit();
+}
+
+// 4. OUTSOURCE (SELL) PRODUCT
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['sell_product'])) {
+    $id = (int)$_POST['sell_id'];
+    $out_qty = (int)$_POST['out_qty'];
+    $date = date('Y-m-d'); // Current date for the record
+
+    // Deduct the quantity from the master inventory
+    $conn->query("UPDATE inventory SET current_quantity = current_quantity - $out_qty WHERE product_id=$id");
+    
+    // Record this transaction in the outsourcing table to track sales/usage
+    $conn->query("INSERT INTO inventory_outsourcing (record_date, product_id, quantity_out) VALUES ('$date', $id, $out_qty)");
+    
+    header("Location: inventory.php"); 
+    exit();
+}
+
+// 5. SORTING LOGIC
+$sort_option = $_GET['sort'] ?? 'name_asc';
+$order_by = "product_type ASC, product_name ASC"; 
+
+if ($sort_option === 'qty_asc') $order_by = "product_type ASC, current_quantity ASC";
+if ($sort_option === 'qty_desc') $order_by = "product_type ASC, current_quantity DESC";
+if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventory Management - Coop DBMS</title>
-    <!-- The ?v= php echo time() forces the browser to NEVER cache this file -->
     <link rel="stylesheet" href="css/styles.css?v=<?php echo time(); ?>">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
@@ -49,7 +101,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_product'])) {
                 </div>
             </div>
 
-            <!-- 1. REPORT DASHBOARD CARDS -->
+            <!-- REPORT DASHBOARD CARDS -->
             <div class="stat-cards">
                 <div class="stat-card">
                     <div class="stat-title">Total Inventory Items</div>
@@ -82,9 +134,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_product'])) {
                 </div>
             </div>
 
-            <!-- 2. CREATE PRODUCT FORM (HORIZONTAL) -->
+            <!-- CREATE PRODUCT FORM -->
             <div class="form-panel">
-                <h4>Add New Inventory Item</h4>
+                <h4>Add (IN) to Inventory</h4>
                 <form action="inventory.php" method="POST" class="inline-form">
                     <div class="input-group">
                         <label>Product Name</label>
@@ -106,7 +158,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_product'])) {
                         </select>
                     </div>
                     <div class="input-group">
-                        <label>Qty</label>
+                        <label>Qty (To Add)</label>
                         <input type="number" name="quantity" value="1" required>
                     </div>
                     <div class="input-group">
@@ -117,14 +169,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_product'])) {
                 </form>
             </div>
 
-            <!-- 3. DATA TABLE -->
+            <!-- DATA TABLE WITH FILTERS -->
             <div class="content-display" style="padding: 0; overflow: hidden;">
+                
+                <div style="background-color: #f8f9fa; padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+                    <h4 style="margin: 0; color: #444; font-size: 16px;">Current Stock Directory</h4>
+                    <form action="inventory.php" method="GET" style="display: flex; gap: 10px; align-items: center;">
+                        <label style="font-size: 13px; font-weight: 600; color: #555;">Sort By:</label>
+                        <select name="sort" onchange="this.form.submit()" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                            <option value="name_asc" <?= $sort_option == 'name_asc' ? 'selected' : '' ?>>Alphabetical (A-Z)</option>
+                            <option value="qty_desc" <?= $sort_option == 'qty_desc' ? 'selected' : '' ?>>Quantity (High to Low)</option>
+                            <option value="qty_asc" <?= $sort_option == 'qty_asc' ? 'selected' : '' ?>>Quantity (Low to High)</option>
+                            <option value="price_desc" <?= $sort_option == 'price_desc' ? 'selected' : '' ?>>Price (Highest First)</option>
+                        </select>
+                    </form>
+                </div>
+
                 <div class="data-table-container" style="margin-top: 0;">
                     <table class="data-table">
-                        <thead style="background-color: #f8f9fa;">
+                        <thead>
                             <tr>
                                 <th>Product Name</th>
-                                <th>Category</th>
                                 <th>Price</th>
                                 <th>Current Stock</th>
                                 <th>Status</th>
@@ -133,35 +198,65 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_product'])) {
                         </thead>
                         <tbody>
                             <?php
-                            $sql = "SELECT * FROM inventory ORDER BY product_name ASC";
+                            $sql = "SELECT * FROM inventory ORDER BY $order_by";
                             $result = $conn->query($sql);
 
                             if ($result && $result->num_rows > 0) {
+                                $current_category = "";
+
                                 while($row = $result->fetch_assoc()) {
+                                    
+                                    // Grouping Logic
+                                    if ($current_category !== $row['product_type']) {
+                                        $current_category = $row['product_type'];
+                                        echo "<tr class='category-header'>
+                                                <td colspan='5'>" . strtoupper(htmlspecialchars($current_category)) . "</td>
+                                              </tr>";
+                                    }
+
                                     $qty = $row['current_quantity'];
                                     $unit = $row['quantity_type'];
                                     
                                     if ($qty < 0) {
-                                        $status = "<span class='badge-danger' style='background: #ffebee; color: #c62828; padding: 5px 10px; border-radius: 20px; font-weight: bold; font-size: 12px;'>NEGLECT / REVIEW</span>";
+                                        $status = "<span class='badge-danger' style='background: #ffebee; color: #c62828;'>NEGLECT / REVIEW</span>";
                                     } elseif ($qty == 0) {
-                                        $status = "<span class='badge-danger' style='background: #fff3e0; color: #e65100; padding: 5px 10px; border-radius: 20px; font-weight: bold; font-size: 12px;'>OUT OF STOCK</span>";
+                                        $status = "<span class='badge-danger' style='background: #fff3e0; color: #e65100;'>OUT OF STOCK</span>";
                                     } else {
-                                        $status = "<span class='badge-success' style='background: #e8f5e9; color: #2e7d32; padding: 5px 10px; border-radius: 20px; font-weight: bold; font-size: 12px;'>IN STOCK</span>";
+                                        $status = "<span class='badge-success'>IN STOCK</span>";
                                     }
 
                                     echo "<tr>
-                                            <td><strong>" . htmlspecialchars($row['product_name']) . "</strong></td>
-                                            <td style='color: #666;'>" . htmlspecialchars($row['product_type']) . "</td>
+                                            <td style='padding-left: 30px;'><strong>" . htmlspecialchars($row['product_name']) . "</strong></td>
                                             <td>₱" . number_format($row['price'], 2) . "</td>
                                             <td><strong style='font-size: 16px;'>{$qty}</strong> <span style='color: #888;'>{$unit}s</span></td>
                                             <td>{$status}</td>
-                                            <td>
-                                                <button class='btn btn-secondary' style='padding: 5px 10px; font-size: 12px;' onclick='alert(\"Edit modal coming soon\")'>EDIT</button>
+                                            <td style='display: flex; gap: 8px;'>
+                                                
+                                                <!-- OUT / SELL BUTTON -->
+                                                <button type='button' class='btn btn-warning out-btn' 
+                                                    data-id='{$row['product_id']}' 
+                                                    data-name='" . htmlspecialchars($row['product_name'], ENT_QUOTES) . "' 
+                                                    data-unit='{$unit}'
+                                                    style='padding: 5px 10px; font-size: 12px;'>OUT</button>
+
+                                                <!-- EDIT BUTTON -->
+                                                <button type='button' class='btn btn-secondary edit-btn' 
+                                                    data-id='{$row['product_id']}' 
+                                                    data-name='" . htmlspecialchars($row['product_name'], ENT_QUOTES) . "' 
+                                                    data-qty='{$qty}' 
+                                                    data-price='{$row['price']}'
+                                                    style='padding: 5px 10px; font-size: 12px;'>EDIT</button>
+                                                
+                                                <!-- DELETE BUTTON -->
+                                                <form action='inventory.php' method='POST' style='margin:0;' onsubmit='return confirm(\"Are you sure you want to permanently delete " . htmlspecialchars($row['product_name'], ENT_QUOTES) . "?\");'>
+                                                    <input type='hidden' name='delete_id' value='{$row['product_id']}'>
+                                                    <button type='submit' name='delete_product' class='btn btn-danger' style='padding: 5px 10px; font-size: 12px;'>DELETE</button>
+                                                </form>
                                             </td>
                                           </tr>";
                                 }
                             } else {
-                                echo "<tr><td colspan='6' style='text-align:center; padding: 60px; color:#888; background: #fff;'>No products in inventory. Add one above.</td></tr>";
+                                echo "<tr><td colspan='5' style='text-align:center; padding: 60px; color:#888;'>No products in inventory. Add one above.</td></tr>";
                             }
                             ?>
                         </tbody>
@@ -172,8 +267,108 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_product'])) {
         </main>
     </div>
 
+    <!-- 1. EDIT PRODUCT MODAL -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Product Details</h3>
+                <span class="close-modal edit-close">&times;</span>
+            </div>
+            <form action="inventory.php" method="POST" style="display: flex; flex-direction: column; gap: 15px;">
+                <input type="hidden" name="edit_id" id="modal_edit_id">
+                <div class="input-group">
+                    <label>Product Name</label>
+                    <input type="text" name="edit_name" id="modal_edit_name" required>
+                </div>
+                <div class="input-group">
+                    <label>Current Stock Quantity</label>
+                    <input type="number" name="edit_qty" id="modal_edit_qty" required>
+                </div>
+                <div class="input-group">
+                    <label>Price Amount (₱)</label>
+                    <input type="number" step="0.01" name="edit_price" id="modal_edit_price" required>
+                </div>
+                <button type="submit" name="edit_product" class="btn btn-primary" style="margin-top: 10px; padding: 12px;">SAVE CHANGES</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. OUTSOURCE (SELL) MODAL -->
+    <div id="sellModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Outsource / Sell Product</h3>
+                <span class="close-modal sell-close">&times;</span>
+            </div>
+            <form action="inventory.php" method="POST" style="display: flex; flex-direction: column; gap: 15px;">
+                <input type="hidden" name="sell_id" id="modal_sell_id">
+                
+                <p style="color: #555; font-size: 14px; line-height: 1.5;">How many units of <strong id="modal_sell_name" style="color: #6a1b9a;"></strong> are going OUT of the inventory?</p>
+
+                <div class="input-group">
+                    <label>Quantity Out (<span id="modal_sell_unit"></span>s)</label>
+                    <input type="number" name="out_qty" value="1" min="1" required>
+                </div>
+                
+                <button type="submit" name="sell_product" class="btn btn-warning" style="margin-top: 10px; padding: 12px; font-weight: bold; font-size: 14px;">CONFIRM OUTSOURCING</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- EMBEDDED JAVASCRIPT: This guarantees the buttons work perfectly -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            
+            // Auto-Format Price Inputs
+            const priceInputs = document.querySelectorAll('input[name="price"], input[name="edit_price"]');
+            priceInputs.forEach(input => {
+                input.addEventListener('blur', function() {
+                    if (this.value) { this.value = parseFloat(this.value).toFixed(2); }
+                });
+            });
+
+            // Edit Modal Variables
+            const editModal = document.getElementById("editModal");
+            const closeEdit = document.querySelector(".edit-close");
+            const editButtons = document.querySelectorAll(".edit-btn");
+
+            // Sell Modal Variables
+            const sellModal = document.getElementById("sellModal");
+            const closeSell = document.querySelector(".sell-close");
+            const sellButtons = document.querySelectorAll(".out-btn");
+
+            // Open Edit Modal
+            editButtons.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.getElementById('modal_edit_id').value = this.getAttribute('data-id');
+                    document.getElementById('modal_edit_name').value = this.getAttribute('data-name');
+                    document.getElementById('modal_edit_qty').value = this.getAttribute('data-qty');
+                    document.getElementById('modal_edit_price').value = parseFloat(this.getAttribute('data-price')).toFixed(2);
+                    editModal.style.display = "block";
+                });
+            });
+
+            // Open Sell (OUT) Modal
+            sellButtons.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.getElementById('modal_sell_id').value = this.getAttribute('data-id');
+                    document.getElementById('modal_sell_name').textContent = this.getAttribute('data-name');
+                    document.getElementById('modal_sell_unit').textContent = this.getAttribute('data-unit');
+                    sellModal.style.display = "block";
+                });
+            });
+
+            // Close Modals with 'X'
+            if(closeEdit) closeEdit.addEventListener('click', () => editModal.style.display = "none");
+            if(closeSell) closeSell.addEventListener('click', () => sellModal.style.display = "none");
+
+            // Close Modals when clicking outside
+            window.addEventListener('click', function(event) {
+                if (event.target === editModal) editModal.style.display = "none";
+                if (event.target === sellModal) sellModal.style.display = "none";
+            });
+        });
+    </script>
+
 </body>
-
-<script src="js/scripts.js"></script>
-
 </html>
