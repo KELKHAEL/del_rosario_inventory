@@ -19,6 +19,7 @@
                 <a href="membership.php" class="menu-btn active">MEMBERSHIP FORM</a>
                 <a href="index.php" class="menu-btn">TRANSACTIONS</a>
                 <a href="inventory.php" class="menu-btn">INVENTORY MANAGEMENT</a>
+                <a href="outsourcing_report.php" class="menu-btn">OUTSOURCING LOGS</a>
                 <a href="#" class="menu-btn">DATABASE MANAGEMENT SYSTEM</a>
             </nav>
         </aside>

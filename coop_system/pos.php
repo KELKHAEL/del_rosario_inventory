@@ -1,0 +1,182 @@
+<?php 
+include 'db.php'; 
+
+// PROCESS THE CHECKOUT CART
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
+    $cart = json_decode($_POST['cart_data'], true);
+    $payment = $conn->real_escape_string($_POST['payment_method']);
+    $date = date('Y-m-d');
+
+    if (!empty($cart)) {
+        foreach ($cart as $item) {
+            $id = (int)$item['id'];
+            $qty = (int)$item['qty'];
+            
+            // 1. Deduct from master inventory
+            $conn->query("UPDATE inventory SET current_quantity = current_quantity - $qty WHERE product_id=$id");
+            
+            // 2. Record the sale with the payment method
+            $conn->query("INSERT INTO inventory_outsourcing (record_date, product_id, quantity_out, payment_method) 
+                          VALUES ('$date', $id, $qty, '$payment')");
+        }
+        echo "<script>alert('Checkout Successful!'); window.location.href='outsourcing_report.php';</script>";
+        exit();
+    }
+}
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sell / Outsource - Coop DBMS</title>
+    <link rel="stylesheet" href="css/styles.css?v=<?php echo time(); ?>">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="dashboard-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="logo-container"><h2>LOGO</h2></div>
+            <nav class="sidebar-menu">
+                <a href="index.php" class="menu-btn">MEMBERSHIP DIRECTORY</a>
+                <a href="transactions.php" class="menu-btn">TRANSACTIONS</a>
+                <a href="inventory.php" class="menu-btn">INVENTORY MANAGEMENT</a>
+                <!-- NEW POS BUTTON -->
+                <a href="pos.php" class="menu-btn active" style="background-color: #2e7d32; border-color: #2e7d32; color: white;">SELL / OUTSOURCE (CART)</a>
+                <a href="outsourcing_report.php" class="menu-btn" style="background-color: #f57c00; border-color: #f57c00; color: white;">OUTSOURCING LOGS</a>
+            </nav>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            <div class="top-action-bar">
+                <h1 class="page-title">Point of Sale & Outsourcing</h1>
+            </div>
+
+            <div class="pos-layout">
+                <!-- LEFT: PRODUCT GRID -->
+                <div class="products-area">
+                    <?php
+                    $res = $conn->query("SELECT * FROM inventory WHERE current_quantity > 0 ORDER BY product_name ASC");
+                    if ($res->num_rows > 0) {
+                        while($row = $result->fetch_assoc() ?? $res->fetch_assoc()) {
+                            echo "
+                            <div class='product-card'>
+                                <h4 style='text-transform: capitalize;'>" . htmlspecialchars($row['product_name']) . "</h4>
+                                <div style='font-size: 12px; color: #888; margin-bottom: 5px;'>" . htmlspecialchars($row['product_type']) . "</div>
+                                <p>₱" . number_format($row['price'], 2) . "</p>
+                                <div style='font-size: 12px; margin-bottom: 10px;'>Stock: {$row['current_quantity']} {$row['quantity_type']}s</div>
+                                <button type='button' class='btn btn-secondary' style='width: 100%; border-color: #6a1b9a; color: #6a1b9a;' 
+                                    onclick='addToCart({$row['product_id']}, \"" . addslashes($row['product_name']) . "\", {$row['price']}, {$row['current_quantity']})'>
+                                    + ADD TO CART
+                                </button>
+                            </div>";
+                        }
+                    } else {
+                        echo "<p>No products in stock.</p>";
+                    }
+                    ?>
+                </div>
+
+                <!-- RIGHT: THE CART -->
+                <div class="cart-area">
+                    <h3 style="margin-bottom: 20px; border-bottom: 2px solid #6a1b9a; padding-bottom: 10px; color: #6a1b9a;">Current Cart</h3>
+                    
+                    <div id="cart-container">
+                        <!-- JS will inject items here -->
+                        <p style="color: #888; text-align: center; font-size: 14px;">Cart is empty</p>
+                    </div>
+
+                    <div class="cart-total">Total: ₱<span id="cart-total-price">0.00</span></div>
+
+                    <form action="pos.php" method="POST" id="checkoutForm">
+                        <input type="hidden" name="cart_data" id="cart_data">
+                        
+                        <div class="input-group" style="margin-bottom: 15px;">
+                            <label>Payment Method</label>
+                            <select name="payment_method" required style="font-weight: bold; border-color: #2e7d32;">
+                                <option value="Cash">Cash Payment</option>
+                                <option value="GCash">GCash Transfer</option>
+                            </select>
+                        </div>
+
+                        <button type="button" class="btn btn-primary" style="width: 100%; background-color: #2e7d32; font-size: 16px; padding: 15px;" onclick="processCheckout()">CONFIRM CHECKOUT</button>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- PURE JAVASCRIPT CART LOGIC -->
+    <script>
+        let cart = {};
+
+        function addToCart(id, name, price, maxQty) {
+            if (cart[id]) {
+                if (cart[id].qty < maxQty) cart[id].qty++;
+                else alert("Cannot exceed current stock!");
+            } else {
+                cart[id] = { name: name, price: price, qty: 1, max: maxQty };
+            }
+            renderCart();
+        }
+
+        function updateQty(id, newQty) {
+            if (newQty > cart[id].max) {
+                alert("Cannot exceed current stock (" + cart[id].max + ")!");
+                cart[id].qty = cart[id].max;
+            } else if (newQty < 1) {
+                delete cart[id];
+            } else {
+                cart[id].qty = parseInt(newQty);
+            }
+            renderCart();
+        }
+
+        function renderCart() {
+            const container = document.getElementById('cart-container');
+            const totalEl = document.getElementById('cart-total-price');
+            container.innerHTML = '';
+            let total = 0;
+
+            let hasItems = false;
+            for (let id in cart) {
+                hasItems = true;
+                const item = cart[id];
+                const itemTotal = item.qty * item.price;
+                total += itemTotal;
+
+                container.innerHTML += `
+                    <div class="cart-item">
+                        <div class="cart-item-info">
+                            <div class="cart-item-title">${item.name}</div>
+                            <div class="cart-item-price">₱${item.price.toFixed(2)} each</div>
+                        </div>
+                        <div class="cart-controls">
+                            <input type="number" value="${item.qty}" min="0" max="${item.max}" onchange="updateQty(${id}, this.value)">
+                            <div style="font-weight: bold; width: 60px; text-align: right;">₱${itemTotal.toFixed(2)}</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if(!hasItems) container.innerHTML = '<p style="color: #888; text-align: center; font-size: 14px;">Cart is empty</p>';
+            totalEl.innerText = total.toFixed(2);
+        }
+
+        function processCheckout() {
+            if (Object.keys(cart).length === 0) {
+                alert("Your cart is empty!");
+                return;
+            }
+            // Convert cart object to array for PHP
+            const cartArray = Object.keys(cart).map(id => ({ id: id, qty: cart[id].qty }));
+            document.getElementById('cart_data').value = JSON.stringify(cartArray);
+            document.getElementById('checkoutForm').submit();
+        }
+    </script>
+</body>
+</html>

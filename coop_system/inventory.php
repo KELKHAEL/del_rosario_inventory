@@ -44,23 +44,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['delete_product'])) {
     exit();
 }
 
-// 4. OUTSOURCE (SELL) PRODUCT
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['sell_product'])) {
-    $id = (int)$_POST['sell_id'];
-    $out_qty = (int)$_POST['out_qty'];
-    $date = date('Y-m-d'); // Current date for the record
-
-    // Deduct the quantity from the master inventory
-    $conn->query("UPDATE inventory SET current_quantity = current_quantity - $out_qty WHERE product_id=$id");
-    
-    // Record this transaction in the outsourcing table to track sales/usage
-    $conn->query("INSERT INTO inventory_outsourcing (record_date, product_id, quantity_out) VALUES ('$date', $id, $out_qty)");
-    
-    header("Location: inventory.php"); 
-    exit();
-}
-
-// 5. SORTING LOGIC
+// 4. SORTING LOGIC
 $sort_option = $_GET['sort'] ?? 'name_asc';
 $order_by = "product_type ASC, product_name ASC"; 
 
@@ -88,6 +72,10 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
                 <a href="index.php" class="menu-btn">MEMBERSHIP DIRECTORY</a>
                 <a href="transactions.php" class="menu-btn">TRANSACTIONS</a>
                 <a href="inventory.php" class="menu-btn active">INVENTORY MANAGEMENT</a>
+                <!-- Point of Sale / Cart Button -->
+                <a href="pos.php" class="menu-btn" style="background-color: #2e7d32; border-color: #2e7d32; color: white;">SELL / OUTSOURCE (CART)</a>
+                <!-- Outsourcing Logs -->
+                <a href="outsourcing_report.php" class="menu-btn" style="background-color: #f57c00; border-color: #f57c00; color: white;">OUTSOURCING LOGS</a>
                 <a href="#" class="menu-btn">DATABASE MANAGEMENT SYSTEM</a>
             </nav>
         </aside>
@@ -95,9 +83,9 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
         <!-- MAIN CONTENT AREA -->
         <main class="main-content">
             <div class="top-action-bar">
-                <h1 class="page-title">Inventory & Stock Reports</h1>
+                <h1 class="page-title">Master Inventory Database</h1>
                 <div class="action-buttons">
-                    <button class="btn btn-secondary">PRINT REPORT</button>
+                    <button class="btn btn-secondary" onclick="window.print()">PRINT REPORT</button>
                 </div>
             </div>
 
@@ -140,11 +128,11 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
                 <form action="inventory.php" method="POST" class="inline-form">
                     <div class="input-group">
                         <label>Product Name</label>
-                        <input type="text" name="product_name" placeholder="e.g., Premium Rice 911" required>
+                        <input type="text" name="product_name" placeholder="e.g., Premium Rice" required>
                     </div>
                     <div class="input-group">
                         <label>Category/Type</label>
-                        <input type="text" name="product_type" placeholder="e.g., Rice, Canned Goods" required>
+                        <input type="text" name="product_type" placeholder="e.g., Rice, Canned" required>
                     </div>
                     <div class="input-group">
                         <label>Unit</label>
@@ -217,6 +205,7 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
                                     $qty = $row['current_quantity'];
                                     $unit = $row['quantity_type'];
                                     
+                                    // Status Badges
                                     if ($qty < 0) {
                                         $status = "<span class='badge-danger' style='background: #ffebee; color: #c62828;'>NEGLECT / REVIEW</span>";
                                     } elseif ($qty == 0) {
@@ -232,13 +221,6 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
                                             <td>{$status}</td>
                                             <td style='display: flex; gap: 8px;'>
                                                 
-                                                <!-- OUT / SELL BUTTON -->
-                                                <button type='button' class='btn btn-warning out-btn' 
-                                                    data-id='{$row['product_id']}' 
-                                                    data-name='" . htmlspecialchars($row['product_name'], ENT_QUOTES) . "' 
-                                                    data-unit='{$unit}'
-                                                    style='padding: 5px 10px; font-size: 12px;'>OUT</button>
-
                                                 <!-- EDIT BUTTON -->
                                                 <button type='button' class='btn btn-secondary edit-btn' 
                                                     data-id='{$row['product_id']}' 
@@ -267,7 +249,7 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
         </main>
     </div>
 
-    <!-- 1. EDIT PRODUCT MODAL -->
+    <!-- EDIT PRODUCT MODAL -->
     <div id="editModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -276,6 +258,7 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
             </div>
             <form action="inventory.php" method="POST" style="display: flex; flex-direction: column; gap: 15px;">
                 <input type="hidden" name="edit_id" id="modal_edit_id">
+                
                 <div class="input-group">
                     <label>Product Name</label>
                     <input type="text" name="edit_name" id="modal_edit_name" required>
@@ -288,57 +271,27 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
                     <label>Price Amount (₱)</label>
                     <input type="number" step="0.01" name="edit_price" id="modal_edit_price" required>
                 </div>
+                
                 <button type="submit" name="edit_product" class="btn btn-primary" style="margin-top: 10px; padding: 12px;">SAVE CHANGES</button>
             </form>
         </div>
     </div>
 
-    <!-- 2. OUTSOURCE (SELL) MODAL -->
-    <div id="sellModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Outsource / Sell Product</h3>
-                <span class="close-modal sell-close">&times;</span>
-            </div>
-            <form action="inventory.php" method="POST" style="display: flex; flex-direction: column; gap: 15px;">
-                <input type="hidden" name="sell_id" id="modal_sell_id">
-                
-                <p style="color: #555; font-size: 14px; line-height: 1.5;">How many units of <strong id="modal_sell_name" style="color: #6a1b9a;"></strong> are going OUT of the inventory?</p>
-
-                <div class="input-group">
-                    <label>Quantity Out (<span id="modal_sell_unit"></span>s)</label>
-                    <input type="number" name="out_qty" value="1" min="1" required>
-                </div>
-                
-                <button type="submit" name="sell_product" class="btn btn-warning" style="margin-top: 10px; padding: 12px; font-weight: bold; font-size: 14px;">CONFIRM OUTSOURCING</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- EMBEDDED JAVASCRIPT: This guarantees the buttons work perfectly -->
+    <!-- GUARANTEED WORKING MODAL SCRIPT -->
     <script>
         document.addEventListener("DOMContentLoaded", function() {
-            
-            // Auto-Format Price Inputs
-            const priceInputs = document.querySelectorAll('input[name="price"], input[name="edit_price"]');
-            priceInputs.forEach(input => {
-                input.addEventListener('blur', function() {
+            // Auto format price input
+            const editPriceInput = document.getElementById('modal_edit_price');
+            if(editPriceInput) {
+                editPriceInput.addEventListener('blur', function() {
                     if (this.value) { this.value = parseFloat(this.value).toFixed(2); }
                 });
-            });
+            }
 
-            // Edit Modal Variables
+            // Edit Modal logic
             const editModal = document.getElementById("editModal");
-            const closeEdit = document.querySelector(".edit-close");
-            const editButtons = document.querySelectorAll(".edit-btn");
-
-            // Sell Modal Variables
-            const sellModal = document.getElementById("sellModal");
-            const closeSell = document.querySelector(".sell-close");
-            const sellButtons = document.querySelectorAll(".out-btn");
-
-            // Open Edit Modal
-            editButtons.forEach(btn => {
+            
+            document.querySelectorAll(".edit-btn").forEach(btn => {
                 btn.addEventListener('click', function() {
                     document.getElementById('modal_edit_id').value = this.getAttribute('data-id');
                     document.getElementById('modal_edit_name').value = this.getAttribute('data-name');
@@ -348,27 +301,15 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
                 });
             });
 
-            // Open Sell (OUT) Modal
-            sellButtons.forEach(btn => {
-                btn.addEventListener('click', function() {
-                    document.getElementById('modal_sell_id').value = this.getAttribute('data-id');
-                    document.getElementById('modal_sell_name').textContent = this.getAttribute('data-name');
-                    document.getElementById('modal_sell_unit').textContent = this.getAttribute('data-unit');
-                    sellModal.style.display = "block";
-                });
-            });
-
-            // Close Modals with 'X'
-            if(closeEdit) closeEdit.addEventListener('click', () => editModal.style.display = "none");
-            if(closeSell) closeSell.addEventListener('click', () => sellModal.style.display = "none");
-
-            // Close Modals when clicking outside
+            document.querySelector(".edit-close").addEventListener('click', () => editModal.style.display = "none");
+            
+            // Close when clicking outside the box
             window.addEventListener('click', function(event) {
-                if (event.target === editModal) editModal.style.display = "none";
-                if (event.target === sellModal) sellModal.style.display = "none";
+                if (event.target === editModal) {
+                    editModal.style.display = "none";
+                }
             });
         });
     </script>
-
 </body>
 </html>
