@@ -1,6 +1,5 @@
 <?php
 include 'db.php';
-// Require PhpSpreadsheet
 require 'vendor/autoload.php'; 
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date; 
@@ -20,10 +19,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         
         foreach ($validArray as $valid) {
             $cleanValid = preg_replace('/[^a-z0-9]/', '', strtolower($valid));
-            if ($cleanInput === $cleanValid || strpos($cleanInput, $cleanValid) !== false) {
+            if ($cleanInput === $cleanValid) {
                 return $valid;
             }
         }
+        
+        foreach ($validArray as $valid) {
+            $cleanValid = preg_replace('/[^a-z0-9]/', '', strtolower($valid));
+            if (strpos($cleanInput, $cleanValid) !== false) {
+                return $valid;
+            }
+        }
+        
         return $default;
     }
 
@@ -38,26 +45,71 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
 
         $cleanDate = preg_replace('/[^a-zA-Z0-9\s,\/\-]/', '', $input);
         $time = strtotime($cleanDate);
-        return ($time !== false) ? date('Y-m-d', $time) : null;
+        return ($time !== false && $time > 0) ? date('Y-m-d', $time) : null;
+    }
+
+    // 3. INTELLIGENT NAME SPLITTER (Updated for "Last, First Middle" format for both)
+    function splitName($fullName) {
+        $last = ''; $first = ''; $middle = '';
+        $cleanName = preg_replace('/\s+/', ' ', trim($fullName));
+        
+        if (strpos($cleanName, ',') !== false) {
+            // Split by comma: "Baturiano", "Milagrosa Otacan" or "Noel P."
+            $parts = explode(',', $cleanName, 2);
+            $last = trim($parts[0]);
+            
+            // Now look at the first name part
+            $fm_parts = explode(' ', trim($parts[1]));
+            
+            // If there's more than one word in the first name section, the last word is the middle name/initial
+            if (count($fm_parts) > 1) {
+                $middle = array_pop($fm_parts); 
+                $first = implode(' ', $fm_parts); 
+            } else {
+                $first = trim($parts[1]);
+            }
+        } else {
+            // Fallback if no comma is used
+            $name_parts = explode(' ', $cleanName);
+            $last = count($name_parts) > 1 ? array_shift($name_parts) : $cleanName;
+            $middle = count($name_parts) > 1 ? array_pop($name_parts) : '';
+            $first = count($name_parts) > 0 ? implode(' ', $name_parts) : '';
+        }
+        
+        return [$last, $first, $middle];
     }
 
     $valid_occupations = ['Private Employee', "Gov't Employee", 'Self-Employed', 'Farmer', 'Pensioner', 'Student', 'House Keeper', 'Fisher folk', 'Entrepreneur/Vendor', 'Others'];
     $valid_civil_status = ['Single', 'Married', 'Widowed', 'Separated'];
-    $valid_sex = ['MALE', 'FEMALE'];
 
     $last_inserted_member_id = null;
-
-    // --- FORBIDDEN HEADERS LIST ---
-    $forbidden_headers = ['name', 'full name', 'member name', 'beneficiaries', 'beneficiaries names', 'beneficiary name', 'form id'];
-
-    // --- DYNAMIC HEADER DETECTION ---
+    
+    // Dynamically find the headers
+    $header_map = [];
     $start_row = 1;
+    
     for ($i = 0; $i < min(10, count($rows)); $i++) {
-        $col1 = trim(strtolower((string)($rows[$i][1] ?? '')));
-        if (in_array($col1, $forbidden_headers)) {
-            $start_row = $i + 1; 
+        if (!empty($rows[$i][0]) && strtolower(trim((string)$rows[$i][0])) === 'form id') {
+            $start_row = $i + 1;
+            foreach($rows[$i] as $col_index => $col_name) {
+                $clean_col = strtolower(trim(preg_replace('/\s+/', ' ', (string)$col_name)));
+                if(!empty($clean_col)) {
+                    $header_map[$clean_col] = $col_index;
+                }
+            }
             break;
         }
+    }
+
+    // Helper to safely pull mapped columns
+    function getVal($row, $map, ...$possibleKeys) {
+        foreach ($possibleKeys as $key) {
+            if (isset($map[$key]) && isset($row[$map[$key]])) {
+                $val = trim((string)$row[$map[$key]]);
+                if ($val !== '') return $val;
+            }
+        }
+        return '';
     }
 
     // Loop through Excel Rows
@@ -65,76 +117,52 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         $row = $rows[$i];
         if (!is_array($row)) continue;
 
-        // --- PERFECTED COLUMN MAPPING ---
-        $form_id        = trim((string)($row[0] ?? '')); 
-        $full_name      = trim((string)($row[1] ?? '')); 
-        $dob            = parseDate($row[2] ?? ''); 
-        $birth_place    = trim((string)($row[3] ?? '')); 
-        $civil_status   = fuzzyMatch($row[4] ?? '', $valid_civil_status, ''); 
-        $religion       = trim((string)($row[5] ?? '')); 
-        $sex            = fuzzyMatch($row[6] ?? '', $valid_sex, ''); 
-        $tribe          = trim((string)($row[7] ?? '')); 
-        $sss            = preg_replace('/[^0-9\-]/', '', trim((string)($row[8] ?? ''))); 
-        $tin            = preg_replace('/[^0-9\-]/', '', trim((string)($row[9] ?? ''))); 
-        $postal         = preg_replace('/[^0-9]/', '', trim((string)($row[10] ?? ''))); 
-        $address        = trim((string)($row[11] ?? '')); 
-        $business_add   = trim((string)($row[12] ?? '')); 
-        $education      = trim((string)($row[13] ?? '')); 
-        $employment     = trim((string)($row[14] ?? '')); 
+        $form_id        = getVal($row, $header_map, 'form id');
+        $full_name      = getVal($row, $header_map, 'member name', 'name', 'full name');
+        $dob            = parseDate(getVal($row, $header_map, 'date of birth'));
+        $birth_place    = getVal($row, $header_map, 'birth place');
+        $civil_status   = getVal($row, $header_map, 'civil status');
+        $religion       = getVal($row, $header_map, 'religion');
+        $tribe          = getVal($row, $header_map, 'tribe');
+        $sss            = preg_replace('/[^0-9\-]/', '', getVal($row, $header_map, 'sss/gsis no.', 'sss no'));
+        $tin            = preg_replace('/[^0-9\-]/', '', getVal($row, $header_map, 'tin no.', 'tin'));
+        $postal         = preg_replace('/[^0-9]/', '', getVal($row, $header_map, 'postal code'));
+        $address        = getVal($row, $header_map, 'address');
+        $business_add   = getVal($row, $header_map, 'business - office address', 'business address');
+        $education      = getVal($row, $header_map, 'educational attainment');
+        $employment     = getVal($row, $header_map, 'present employment/business activities', 'employment');
+        $occupation     = getVal($row, $header_map, 'occupation');
+        $income         = getVal($row, $header_map, 'monthly income');
         
-        // Beneficiaries are in Columns P, Q, R (Indexes 15, 16, 17)
-        $ben_name       = trim((string)($row[15] ?? '')); 
-        $ben_dob        = parseDate($row[16] ?? ''); 
-        $ben_rel        = trim((string)($row[17] ?? '')); 
+        $ben_name       = getVal($row, $header_map, 'beneficiaries names', 'beneficiaries', 'beneficiary name');
+        // Very aggressive header search for the Beneficiary DOB
+        $ben_dob        = parseDate(getVal($row, $header_map, 'beneficiaries date of birth', 'beneficiary date of birth', 'date of birth (beneficiary)', 'dob'));
+        $ben_rel        = getVal($row, $header_map, 'relationship to the member', 'relationship');
 
-        // Occupation and Income are in Columns S, T (Indexes 18, 19)
-        $occupation     = fuzzyMatch($row[18] ?? '', $valid_occupations, 'Others'); 
-        $income         = trim((string)($row[19] ?? '')); 
-
-        $clean_check_name = trim(strtolower(preg_replace('/\s+/', ' ', $full_name)));
-        $clean_check_ben = trim(strtolower(preg_replace('/\s+/', ' ', $ben_name)));
+        // Bulletproof Sex parsing
+        $raw_sex = strtolower(getVal($row, $header_map, 'sex'));
+        $sex = '';
+        if (strpos($raw_sex, 'female') !== false || $raw_sex === 'f') $sex = 'FEMALE';
+        elseif (strpos($raw_sex, 'male') !== false || $raw_sex === 'm') $sex = 'MALE';
 
         // -- 1. INSERT NEW MEMBER --
-        if (!empty($full_name) && !in_array($clean_check_name, $forbidden_headers)) {
-            
-            // Member Name splitting (Format: "Last Name, First Name")
-            $full_name_clean = preg_replace('/\s+/', ' ', trim($full_name));
-            if (strpos($full_name_clean, ',') !== false) {
-                $parts = explode(',', $full_name_clean, 2);
-                $last_name = trim($parts[0]);
-                $first_name = trim($parts[1]);
-            } else {
-                $name_parts = explode(' ', $full_name_clean);
-                $last_name = count($name_parts) > 1 ? array_shift($name_parts) : $full_name_clean;
-                $first_name = count($name_parts) > 0 ? implode(' ', $name_parts) : '';
-            }
+        if (!empty($full_name)) {
+            list($last_name, $first_name, $middle_name) = splitName($full_name);
 
-            $stmt = $conn->prepare("INSERT INTO members (last_name, first_name, date_of_birth, birth_place, civil_status, religion, sex, tribe, sss_gsis_no, tin_no, postal_code, address, business_office_address, educational_attainment, present_employment_business, occupation, monthly_income) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param("sssssssssssssssss", $last_name, $first_name, $dob, $birth_place, $civil_status, $religion, $sex, $tribe, $sss, $tin, $postal, $address, $business_add, $education, $employment, $occupation, $income);
+            $stmt = $conn->prepare("INSERT INTO members (last_name, first_name, middle_name, date_of_birth, birth_place, civil_status, religion, sex, tribe, sss_gsis_no, tin_no, postal_code, address, business_office_address, educational_attainment, present_employment_business, occupation, monthly_income) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("ssssssssssssssssss", $last_name, $first_name, $middle_name, $dob, $birth_place, $civil_status, $religion, $sex, $tribe, $sss, $tin, $postal, $address, $business_add, $education, $employment, $occupation, $income);
             $stmt->execute();
             
-            // Save ID for beneficiaries
             $last_inserted_member_id = $stmt->insert_id;
             $stmt->close();
         }
 
         // -- 2. INSERT BENEFICIARY --
-        if (!empty($ben_name) && !in_array($clean_check_ben, $forbidden_headers) && $last_inserted_member_id !== null) {
-            
-            // Beneficiary Name parsing (Format: "First Name Last Name")
-            $ben_name_clean = preg_replace('/\s+/', ' ', trim($ben_name));
-            if (strpos($ben_name_clean, ',') !== false) {
-                $parts = explode(',', $ben_name_clean, 2);
-                $ben_last = trim($parts[0]);
-                $ben_first = trim($parts[1]);
-            } else {
-                $ben_parts = explode(' ', $ben_name_clean);
-                $ben_last = count($ben_parts) > 1 ? array_pop($ben_parts) : $ben_name_clean;
-                $ben_first = count($ben_parts) > 0 ? implode(' ', $ben_parts) : '';
-            }
+        if (!empty($ben_name) && $last_inserted_member_id !== null) {
+            list($ben_last, $ben_first, $ben_middle) = splitName($ben_name);
 
-            $stmt_ben = $conn->prepare("INSERT INTO beneficiaries (member_id, last_name, first_name, date_of_birth, relationship) VALUES (?, ?, ?, ?, ?)");
-            $stmt_ben->bind_param("issss", $last_inserted_member_id, $ben_last, $ben_first, $ben_dob, $ben_rel);
+            $stmt_ben = $conn->prepare("INSERT INTO beneficiaries (member_id, last_name, first_name, middle_name, date_of_birth, relationship) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt_ben->bind_param("isssss", $last_inserted_member_id, $ben_last, $ben_first, $ben_middle, $ben_dob, $ben_rel);
             $stmt_ben->execute();
             $stmt_ben->close();
         }
