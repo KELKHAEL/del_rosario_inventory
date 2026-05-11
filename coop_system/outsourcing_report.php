@@ -80,7 +80,7 @@ if ($result && $result->num_rows > 0) {
         <!-- SIDEBAR -->
         <aside class="sidebar">
             <div class="logo-container">
-                <img src="img/logo-removebg.png" alt="Coop Logo">
+                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo">
             </div>
             
             <nav class="sidebar-menu">

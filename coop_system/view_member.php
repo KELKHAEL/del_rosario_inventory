@@ -60,11 +60,89 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
             position: relative;
         }
 
-        /* Form Structure Styles */
-        .form-title { text-align: center; font-family: serif; font-size: 24px; font-weight: bold; margin-bottom: 20px; text-transform: uppercase; border-bottom: 2px solid #000; padding-bottom: 10px;}
-        .form-id-box { position: absolute; top: 15mm; right: 15mm; border: 1px solid #000; padding: 5px 10px; font-weight: bold; font-size: 14px;}
+        /* --- PERFECTED HEADER LAYOUT --- */
+        .coop-header-container {
+            position: relative;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #000;
+            min-height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Top Left: Logo */
+        .coop-header-logo {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 85px;
+            height: auto;
+        }
+
+        /* Center: Text */
+        .coop-header-text {
+            text-align: center;
+        }
+
+        .coop-header-text h2 {
+            margin: auto;
+            font-family: Arial, sans-serif;
+            font-size: 15px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
         
-        .section-header { background-color: #333; color: white; padding: 5px 10px; font-size: 14px; font-weight: bold; text-transform: uppercase; margin-top: 20px;}
+        .coop-header-text h5 {
+            margin: 2px 0;
+            font-size: 11px;
+            font-weight: normal;
+        }
+
+        /* Top Right: 1x1 Photo Box */
+        .photo-box {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 1in;
+            height: 1in;
+            border: 1px solid #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #555;
+            text-align: center;
+        }
+        
+        /* The Title Block Below Header */
+        .title-block {
+            text-align: center;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            position: relative;
+        }
+        
+        .form-no-text { 
+            position: absolute;
+            left: 0;
+            top: 0;
+            font-weight: bold; 
+            font-size: 14px;
+            text-align: left;
+        }
+
+        .title-block h3 {
+            margin: 0;
+            font-size: 20px;
+            letter-spacing: 1px;
+            text-decoration: underline;
+        }
+
+        /* ------------------------------- */
+        
+        .section-header { background-color: #570591; color: white; padding: 5px 10px; font-size: 14px; font-weight: bold; text-transform: uppercase; margin-top: 20px;}
         
         .form-row { display: flex; border-left: 1px solid #000; border-bottom: 1px solid #000; border-right: 1px solid #000; }
         .form-row:first-of-type { border-top: 1px solid #000; }
@@ -79,12 +157,35 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
         .paper-table th, .paper-table td { border: 1px solid #000; padding: 6px; text-align: left; font-size: 12px; }
         .paper-table th { background-color: #f0f0f0; text-transform: uppercase; font-size: 10px; }
 
-        .signature-section { margin-top: 40px; display: flex; justify-content: space-between; }
-        .sig-box { width: 40%; text-align: center; }
-        .sig-line { border-bottom: 1px solid #000; height: 30px; margin-bottom: 5px; }
-        .sig-label { font-size: 12px; font-weight: bold; text-transform: uppercase; }
+        .certification-section {
+            margin-top: 40px;
+            font-size: 14px;
+        }
+        .certification-text {
+            text-indent: 40px;
+            line-height: 1.6;
+            margin-bottom: 50px;
+        }
+        .signature-wrapper {
+            display: flex;
+            justify-content: flex-end;
+        }
+        .sig-box { 
+            width: 300px; 
+            text-align: center; 
+        }
+        .sig-line { 
+            border-bottom: 1px solid #000; 
+            height: 20px; 
+            margin-bottom: 5px; 
+        }
+        .sig-label { 
+            font-size: 12px; 
+            font-weight: bold; 
+            text-transform: uppercase; 
+        }
 
-        /* PRINT MEDIA QUERY - Hides everything except the paper */
+        /* PRINT MEDIA QUERY */
         @media print {
             body { background: white; margin: 0; padding: 0; }
             .sidebar { display: none !important; }
@@ -105,7 +206,7 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
 
     <div class="dashboard-container">
         <aside class="sidebar">
-            <div class="logo-container"><img src="img/logo-removebg.png" alt="Coop Logo"></div>
+            <div class="logo-container"><img src="img/purplearmy_logo-removebg.png" alt="Coop Logo"></div>
             <nav class="sidebar-menu">
                 <a href="index.php" class="menu-btn active">MEMBERSHIP DIRECTORY</a>
                 <a href="transactions.php" class="menu-btn">TRANSACTIONS</a>
@@ -122,14 +223,29 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
                 <h1 class="page-title">View Member Record</h1>
                 <div class="action-buttons">
                     <a href="index.php" class="btn btn-secondary" style="text-decoration: none;">&larr; BACK</a>
-                    <button class="btn btn-primary" onclick="window.print()" style="background-color: #2e7d32;">🖨️ PRINT FORM</button>
+                    <button class="btn btn-primary" onclick="window.print()" style="background-color: #570591;">PRINT FORM</button>
                 </div>
             </div>
 
             <div class="a4-paper">
                 
-                <div class="form-id-box">FORM ID: <?= $formatted_id ?></div>
-                <div class="form-title">Membership Profile</div>
+                <div class="coop-header-container">
+                    <img src="img/purplearmy_logo-removebg.png" alt="Purple Army Logo" class="coop-header-logo">
+                    
+                    <div class="coop-header-text">
+                        <h2>PURPLE ARMY CONSUMERS COOPERATIVE</h2>
+                        <h5>428 A Soriano Highway, Amaya II, Tanza, Cavite</h5>
+                        <h5>purplearmycooperative@gmail.com</h5>
+                        <h5>09338243704/09569447343</h5>
+                    </div>
+                    
+                    <div class="photo-box">1" x 1"<br>Photo</div>
+                </div>
+
+                <div class="title-block">
+                    <div class="form-no-text">Form No. <span style="text-decoration: underline; font-weight: normal;"><?= $formatted_id ?></span></div>
+                    <h3>MEMBERSHIP PROFILE</h3>
+                </div>
 
                 <div class="section-header">I. Personal Information</div>
                 <div class="form-row" style="border-top: 1px solid #000;">
@@ -197,14 +313,15 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
                     <div class="form-col"><span class="field-label">Monthly Income</span><span class="field-value"><?= htmlspecialchars($member['monthly_income']) ?></span></div>
                 </div>
 
-                <div class="signature-section">
-                    <div class="sig-box">
-                        <div class="sig-line"></div>
-                        <div class="sig-label">Signature of Applicant</div>
-                    </div>
-                    <div class="sig-box">
-                        <div class="sig-line"></div>
-                        <div class="sig-label">Date</div>
+                <div class="certification-section">
+                    <p class="certification-text">
+                        I hereby certify that the above information is true and correct, signed this ____ day of __________________ , _______.
+                    </p>
+                    <div class="signature-wrapper">
+                        <div class="sig-box">
+                            <div class="sig-line"></div>
+                            <div class="sig-label">Signature over printed name</div>
+                        </div>
                     </div>
                 </div>
 

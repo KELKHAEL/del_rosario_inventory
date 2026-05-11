@@ -68,7 +68,7 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
         <!-- SIDEBAR -->
         <aside class="sidebar">
             <div class="logo-container">
-                <img src="img/logo-removebg.png" alt="Coop Logo">
+                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo">
             </div>
             
             <nav class="sidebar-menu">
