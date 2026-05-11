@@ -1,6 +1,13 @@
 <?php 
 include 'db.php'; 
 
+// Fetch negative stock setting
+$setting_res = $conn->query("SELECT setting_value FROM config_inventory_settings WHERE setting_key = 'allow_negative_stock'");
+$allow_negative = 0;
+if ($setting_res && $setting_res->num_rows > 0) {
+    $allow_negative = (int)$setting_res->fetch_assoc()['setting_value'];
+}
+
 // PROCESS THE CHECKOUT CART
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
     $cart = json_decode($_POST['cart_data'], true);
@@ -17,7 +24,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
             $id = (int)$item['id'];
             $qty = (int)$item['qty'];
             
+            // Deduct from master inventory (negative logic is handled in the frontend UI, DB just executes)
             $conn->query("UPDATE inventory SET current_quantity = current_quantity - $qty WHERE product_id=$id");
+            
             $conn->query("INSERT INTO inventory_outsourcing (record_date, product_id, quantity_out, payment_method, receipt_no, buyer_name, buyer_contact) 
                           VALUES ('$date', $id, $qty, '$payment', '$receipt', '$buyer_name', '$buyer_contact')");
         }
@@ -33,10 +42,6 @@ if ($res_units) {
     while($u = $res_units->fetch_assoc()) {
         $unit_types[] = $u['name'];
     }
-}
-// Fallback if table is empty
-if(empty($unit_types)) {
-    $unit_types = ['Sack', 'Kilo', 'Pieces', 'Pack', 'Tray', 'Can', 'Bottle'];
 }
 ?>
 
@@ -112,9 +117,13 @@ if(empty($unit_types)) {
             <div class="pos-layout">
                 <div class="products-area" id="products-grid">
                     <?php
-                    $res = $conn->query("SELECT * FROM inventory WHERE current_quantity > 0 ORDER BY product_name ASC");
+                    // Show all products now (even if 0) since we might allow negative stock
+                    $res = $conn->query("SELECT * FROM inventory ORDER BY product_name ASC");
                     if ($res && $res->num_rows > 0) {
                         while($row = $res->fetch_assoc()) {
+                            
+                            $stock_color = ($row['current_quantity'] <= 0) ? "red" : "inherit";
+
                             echo "
                             <div class='product-card' 
                                  data-id='{$row['product_id']}' 
@@ -127,7 +136,7 @@ if(empty($unit_types)) {
                                 <div style='font-size: 12px; color: #888; margin-bottom: 5px;'>" . htmlspecialchars($row['product_type']) . "</div>
                                 <p>₱" . number_format($row['price'], 2) . "</p>
                                 <div style='font-size: 12px; margin-bottom: 10px; font-weight: bold;'>
-                                    Stock: <span id='stock-count-{$row['product_id']}'>{$row['current_quantity']}</span> {$row['quantity_type']}s
+                                    Stock: <span id='stock-count-{$row['product_id']}' style='color: {$stock_color};'>{$row['current_quantity']}</span> {$row['quantity_type']}s
                                 </div>
                                 <button type='button' class='btn btn-secondary' style='width: 100%; border-color: #6a1b9a; color: #6a1b9a;' 
                                     onclick='addToCart({$row['product_id']}, \"" . addslashes($row['product_name']) . "\", {$row['price']}, {$row['current_quantity']})'>
@@ -136,7 +145,7 @@ if(empty($unit_types)) {
                             </div>";
                         }
                     } else {
-                        echo "<p style='grid-column: span 3; color: #888;'>No products currently in stock. Please add inventory first.</p>";
+                        echo "<p style='grid-column: span 3; color: #888;'>No products available.</p>";
                     }
                     ?>
                 </div>
@@ -188,6 +197,8 @@ if(empty($unit_types)) {
 
     <script>
         let cart = {};
+        // Inject PHP setting into JS
+        const allowNegativeStock = <?= $allow_negative ?> === 1;
 
         // --- PAYMENT UI LOGIC ---
         document.getElementById('payment_method').addEventListener('change', function() {
@@ -263,22 +274,30 @@ if(empty($unit_types)) {
         // --- CART LOGIC ---
         function addToCart(id, name, price, maxQty) {
             if (cart[id]) {
-                if (cart[id].qty < maxQty) cart[id].qty++;
-                else alert("Cannot exceed current stock limit of " + maxQty + "!");
+                if (allowNegativeStock || cart[id].qty < maxQty) {
+                    cart[id].qty++;
+                } else {
+                    alert("Cannot exceed current stock limit of " + maxQty + " (Negative Stock is Disabled)!");
+                }
             } else {
-                cart[id] = { name: name, price: price, qty: 1, max: maxQty };
+                if (allowNegativeStock || maxQty > 0) {
+                    cart[id] = { name: name, price: price, qty: 1, max: maxQty };
+                } else {
+                    alert("Item is out of stock! (Negative Stock is Disabled)");
+                }
             }
             renderCart();
         }
 
         function updateQty(id, newQty) {
-            if (newQty > cart[id].max) {
+            let n = parseInt(newQty);
+            if (!allowNegativeStock && n > cart[id].max) {
                 alert("Cannot exceed current stock (" + cart[id].max + ")!");
                 cart[id].qty = cart[id].max;
-            } else if (newQty < 1) {
+            } else if (n < 1) {
                 delete cart[id];
             } else {
-                cart[id].qty = parseInt(newQty);
+                cart[id].qty = n;
             }
             renderCart();
         }
@@ -303,7 +322,7 @@ if(empty($unit_types)) {
                             <div class="cart-item-price">₱${item.price.toFixed(2)} each</div>
                         </div>
                         <div class="cart-controls">
-                            <input type="number" value="${item.qty}" min="0" max="${item.max}" onchange="updateQty(${id}, this.value)">
+                            <input type="number" value="${item.qty}" min="0" onchange="updateQty(${id}, this.value)">
                             <div style="font-weight: bold; width: 60px; text-align: right;">₱${itemTotal.toFixed(2)}</div>
                         </div>
                     </div>
@@ -325,7 +344,7 @@ if(empty($unit_types)) {
                 let stockSpan = document.getElementById('stock-count-' + id);
                 if (stockSpan) {
                     stockSpan.innerText = currentStock;
-                    stockSpan.style.color = (currentStock === 0) ? "red" : "inherit";
+                    stockSpan.style.color = (currentStock <= 0) ? "red" : "inherit";
                 }
             });
         }

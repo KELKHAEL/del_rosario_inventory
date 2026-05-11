@@ -1,3 +1,22 @@
+<?php 
+include 'db.php'; 
+
+// Fetch Dynamic Configurations
+function fetchConfig($conn, $table) {
+    $data = [];
+    $res = $conn->query("SELECT name FROM $table ORDER BY name ASC");
+    if ($res && $res->num_rows > 0) {
+        while($row = $res->fetch_assoc()) {
+            $data[] = $row['name'];
+        }
+    }
+    return $data;
+}
+
+$occupations = fetchConfig($conn, 'config_occupations');
+$incomes = fetchConfig($conn, 'config_monthly_income');
+$civil_statuses = fetchConfig($conn, 'config_civil_status');
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,7 +29,6 @@
 <body>
 
     <div class="dashboard-container">
-        <!-- SIDEBAR -->
         <aside class="sidebar">
             <div class="logo-container">
                 <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo">
@@ -26,7 +44,6 @@
             </nav>
         </aside>
 
-        <!-- MAIN CONTENT AREA -->
         <main class="main-content">
             <div class="top-action-bar">
                 <h1 class="page-title">Create New Membership</h1>
@@ -35,8 +52,7 @@
                 </div>
             </div>
 
-            <!-- MEMBER INFO SECTION -->
-                    <div class="form-section">
+            <div class="form-section">
                         <h4>Personal Information</h4>
                         
                         <div class="form-grid">
@@ -67,10 +83,9 @@
                                 <label>Civil Status</label>
                                 <select name="civil_status">
                                     <option value="" disabled selected>Select Status</option>
-                                    <option value="Single">Single</option>
-                                    <option value="Married">Married</option>
-                                    <option value="Widowed">Widowed</option>
-                                    <option value="Separated">Separated</option>
+                                    <?php foreach($civil_statuses as $status): ?>
+                                        <option value="<?= htmlspecialchars($status) ?>"><?= htmlspecialchars($status) ?></option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
                         </div>
@@ -132,7 +147,6 @@
                         </div>
                     </div>
 
-                    <!-- BENEFICIARIES SECTION -->
                     <div class="form-section">
                         <h4>Beneficiaries (Optional - Max 20)</h4>
                         <table class="ben-table" id="beneficiaryTable">
@@ -147,45 +161,29 @@
                                 </tr>
                             </thead>
                             <tbody id="ben-tbody">
-                                <!-- JS injects rows here -->
-                            </tbody>
+                                </tbody>
                         </table>
                         <button type="button" class="btn" id="addBenBtn" style="margin-top: 10px;">+ Add Beneficiary</button>
                     </div>
 
-                    <!-- OCCUPATION AND INCOME SECTION -->
                     <div class="form-section">
                         <div class="form-grid two-col">
                             
-                            <!-- Occupation Radio Group -->
                             <div class="input-group">
                                 <h4>Occupation</h4>
                                 <div class="radio-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; border: 1px solid #ccc; padding: 15px; border-radius: 4px;">
-                                    <label class="radio-item"><input type="radio" name="occupation" value="Private Employee"> Private Employee</label>
-                                    <label class="radio-item"><input type="radio" name="occupation" value="Gov't Employee"> Gov't Employee</label>
-                                    <label class="radio-item"><input type="radio" name="occupation" value="Self-Employed"> Self-Employed</label>
-                                    <label class="radio-item"><input type="radio" name="occupation" value="Farmer"> Farmer</label>
-                                    <label class="radio-item"><input type="radio" name="occupation" value="Pensioner"> Pensioner</label>
-                                    <label class="radio-item"><input type="radio" name="occupation" value="Student"> Student</label>
-                                    <label class="radio-item"><input type="radio" name="occupation" value="House Keeper"> House Keeper</label>
-                                    <label class="radio-item"><input type="radio" name="occupation" value="Fisher folk"> Fisher folk</label>
-                                    <label class="radio-item"><input type="radio" name="occupation" value="Entrepreneur/Vendor"> Entrepreneur/Vendor</label>
-                                    <label class="radio-item"><input type="radio" name="occupation" value="Others"> Others</label>
+                                    <?php foreach($occupations as $occ): ?>
+                                        <label class="radio-item"><input type="radio" name="occupation" value="<?= htmlspecialchars($occ) ?>"> <?= htmlspecialchars($occ) ?></label>
+                                    <?php endforeach; ?>
                                 </div>
                             </div>
 
-                            <!-- Monthly Income Radio Group -->
                             <div class="input-group">
                                 <h4>Monthly Income</h4>
                                 <div class="radio-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; border: 1px solid #ccc; padding: 15px; border-radius: 4px;">
-                                    <label class="radio-item"><input type="radio" name="monthly_income" value="0-999"> 0 - 999</label>
-                                    <label class="radio-item"><input type="radio" name="monthly_income" value="2,000-2,999"> 2,000 - 2,999</label>
-                                    <label class="radio-item"><input type="radio" name="monthly_income" value="4,000-4,999"> 4,000 - 4,999</label>
-                                    <label class="radio-item"><input type="radio" name="monthly_income" value="10,000-15,000"> 10,000 - 15,000</label>
-                                    <label class="radio-item"><input type="radio" name="monthly_income" value="1,000-1,999"> 1,000 - 1,999</label>
-                                    <label class="radio-item"><input type="radio" name="monthly_income" value="3,000-3,999"> 3,000 - 3,999</label>
-                                    <label class="radio-item"><input type="radio" name="monthly_income" value="5,000-9,999"> 5,000 - 9,999</label>
-                                    <label class="radio-item"><input type="radio" name="monthly_income" value="15,000+"> 15,000 +</label>
+                                    <?php foreach($incomes as $inc): ?>
+                                        <label class="radio-item"><input type="radio" name="monthly_income" value="<?= htmlspecialchars($inc) ?>"> <?= htmlspecialchars($inc) ?></label>
+                                    <?php endforeach; ?>
                                 </div>
                             </div>
 
@@ -194,12 +192,10 @@
 
                     <hr style="margin: 30px 0; border: 1px solid #ddd;">
                     
-                    <!-- SAVE BUTTON -->
                     <div style="text-align: right;">
                         <button type="submit" class="btn btn-primary" style="padding: 15px 40px; font-size: 16px;">SAVE MEMBERSHIP RECORD</button>
                     </div>
 
-<!-- SCRIPT FOR DYNAMIC BENEFICIARIES -->
 <script>
     const addBtn = document.getElementById('addBenBtn');
     const tbody = document.getElementById('ben-tbody');

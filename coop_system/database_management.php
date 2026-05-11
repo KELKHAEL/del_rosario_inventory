@@ -15,10 +15,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_item'])) {
     $table = $_POST['table_name'];
     $new_name = trim($conn->real_escape_string($_POST['new_name']));
     
-    // Security Check: Ensure the table being posted actually exists in our whitelist
     if (array_key_exists($table, $config_tables) && !empty($new_name)) {
         $conn->query("INSERT INTO $table (name) VALUES ('$new_name')");
-        echo "<script>window.location.href='database_management.php';</script>";
+        header("Location: database_management.php");
         exit();
     }
 }
@@ -28,12 +27,41 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_item'])) {
     $table = $_POST['table_name'];
     $del_id = (int)$_POST['delete_id'];
     
-    // Security Check
     if (array_key_exists($table, $config_tables)) {
         $conn->query("DELETE FROM $table WHERE id = $del_id");
-        echo "<script>window.location.href='database_management.php';</script>";
+        header("Location: database_management.php");
         exit();
     }
+}
+
+// --- HANDLE EXCEL HEADER UPDATES ---
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_excel_header'])) {
+    $header_id = (int)$_POST['header_id'];
+    $new_header_name = trim(strtolower($conn->real_escape_string($_POST['new_header_name'])));
+    
+    if (!empty($new_header_name)) {
+        $conn->query("UPDATE config_excel_headers SET excel_header_name = '$new_header_name' WHERE id = $header_id");
+        header("Location: database_management.php");
+        exit();
+    }
+}
+
+// --- HANDLE SETTINGS UPDATES ---
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_setting'])) {
+    $setting_key = $conn->real_escape_string($_POST['setting_key']);
+    // Checkboxes only send value if checked. If not set, it means 0 (Off).
+    $setting_value = isset($_POST['setting_value']) ? '1' : '0'; 
+    
+    $conn->query("UPDATE config_inventory_settings SET setting_value = '$setting_value' WHERE setting_key = '$setting_key'");
+    header("Location: database_management.php");
+    exit();
+}
+
+// Fetch current setting for negative stock
+$setting_res = $conn->query("SELECT setting_value FROM config_inventory_settings WHERE setting_key = 'allow_negative_stock'");
+$allow_negative = 0;
+if ($setting_res && $setting_res->num_rows > 0) {
+    $allow_negative = (int)$setting_res->fetch_assoc()['setting_value'];
 }
 ?>
 
@@ -58,6 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_item'])) {
             box-shadow: 0 4px 10px rgba(0,0,0,0.04);
             border: 1px solid #eaeaea;
             overflow: hidden;
+            margin-bottom: 25px;
         }
         .db-header {
             background: #f8f9fa;
@@ -68,51 +97,23 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_item'])) {
             font-size: 15px;
             letter-spacing: 0.5px;
         }
-        .db-body {
-            padding: 20px;
-        }
-        .db-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
-        }
-        .db-table th, .db-table td {
-            padding: 10px;
-            border-bottom: 1px solid #f0f0f0;
-            font-size: 13px;
-        }
-        .db-table td:last-child {
-            text-align: right;
-        }
-        .db-form {
-            display: flex;
-            gap: 10px;
-        }
-        .db-form input {
-            flex: 1;
-            padding: 8px 12px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-size: 13px;
-        }
-        .btn-sm {
-            padding: 6px 10px;
-            font-size: 11px;
-        }
-        .del-btn {
-            background: #ffebee;
-            color: #c62828;
-            border: none;
-            border-radius: 4px;
-            padding: 5px 8px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: 0.2s;
-        }
-        .del-btn:hover {
-            background: #c62828;
-            color: white;
-        }
+        .db-body { padding: 20px; }
+        .db-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        .db-table th, .db-table td { padding: 10px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+        .db-table td:last-child { text-align: right; }
+        .db-form { display: flex; gap: 10px; }
+        .db-form input[type="text"] { flex: 1; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+        .btn-sm { padding: 6px 10px; font-size: 11px; }
+        .del-btn { background: #ffebee; color: #c62828; border: none; border-radius: 4px; padding: 5px 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .del-btn:hover { background: #c62828; color: white; }
+        
+        /* Toggle Switch Styles */
+        .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px;}
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%;}
+        input:checked + .slider { background-color: #2e7d32; }
+        input:checked + .slider:before { transform: translateX(26px); }
     </style>
 </head>
 <body>
@@ -141,13 +142,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_item'])) {
                 </div>
             </div>
 
+            <div class="db-card" style="border-left: 4px solid #f57c00;">
+                <div class="db-header" style="color: #f57c00;">System Settings</div>
+                <div class="db-body">
+                    <form method="POST" style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #fafafa; border: 1px solid #eee; border-radius: 6px;">
+                        <input type="hidden" name="update_setting" value="1">
+                        <input type="hidden" name="setting_key" value="allow_negative_stock">
+                        <div>
+                            <strong style="font-size: 14px;">Allow Outsourcing Without Stock (Negative Inventory)</strong>
+                            <p style="font-size: 12px; color: #777; margin-top: 4px;">If ON, the POS will allow adding items to the cart even if current stock is 0, resulting in negative stock numbers.</p>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <span style="font-weight: bold; color: <?= $allow_negative ? '#2e7d32' : '#c62828' ?>;"><?= $allow_negative ? 'ON' : 'OFF' ?></span>
+                            <label class="switch">
+                                <input type="checkbox" name="setting_value" <?= $allow_negative ? 'checked' : '' ?> onchange="this.form.submit()">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <div class="db-grid">
-                <?php foreach($config_tables as $table_name => $title): ?>
                 
+                <?php foreach($config_tables as $table_name => $title): ?>
                 <div class="db-card">
-                    <div class="db-header">
-                        <?= htmlspecialchars($title) ?>
-                    </div>
+                    <div class="db-header"><?= htmlspecialchars($title) ?></div>
                     <div class="db-body">
                         <table class="db-table">
                             <tbody>
@@ -182,10 +202,46 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_item'])) {
                         </form>
                     </div>
                 </div>
-
                 <?php endforeach; ?>
-            </div>
+                
+                <div class="db-card" style="grid-column: 1 / -1;">
+                    <div class="db-header" style="color: #2e7d32;">Excel Import: Header Mappings</div>
+                    <div class="db-body">
+                        <p style="font-size: 13px; color: #555; margin-bottom: 15px;">Define the exact column names the system should look for when importing Excel files. Format must be exact (case-insensitive).</p>
+                        <table class="db-table">
+                            <thead>
+                                <tr>
+                                    <th style="text-align:left;">System Field</th>
+                                    <th style="text-align:left;">Expected Excel Header</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php
+                                $res = $conn->query("SELECT * FROM config_excel_headers");
+                                if ($res && $res->num_rows > 0) {
+                                    while($row = $res->fetch_assoc()) {
+                                        echo "<tr>
+                                                <td><strong>" . htmlspecialchars($row['system_field']) . "</strong><br><small style='color:#888;'>{$row['description']}</small></td>
+                                                <td>
+                                                    <form method='POST' class='db-form' style='margin:0;'>
+                                                        <input type='hidden' name='update_excel_header' value='1'>
+                                                        <input type='hidden' name='header_id' value='{$row['id']}'>
+                                                        <input type='text' name='new_header_name' value='" . htmlspecialchars($row['excel_header_name']) . "' required style='padding: 5px; width: 250px;'>
+                                                        <button type='submit' class='btn btn-primary btn-sm'>UPDATE</button>
+                                                    </form>
+                                                </td>
+                                                <td></td>
+                                              </tr>";
+                                    }
+                                }
+                                ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
 
+            </div>
         </main>
     </div>
 
