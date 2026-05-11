@@ -7,7 +7,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
     $payment = $conn->real_escape_string($_POST['payment_method']);
     $receipt = $conn->real_escape_string($_POST['receipt_no']); 
     
-    // Capture the new buyer fields
     $buyer_name = $conn->real_escape_string($_POST['buyer_name'] ?? ''); 
     $buyer_contact = $conn->real_escape_string($_POST['buyer_contact'] ?? ''); 
     
@@ -18,16 +17,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
             $id = (int)$item['id'];
             $qty = (int)$item['qty'];
             
-            // 1. Deduct from master inventory
             $conn->query("UPDATE inventory SET current_quantity = current_quantity - $qty WHERE product_id=$id");
-            
-            // 2. Record the sale with the payment method, receipt number, and buyer info
             $conn->query("INSERT INTO inventory_outsourcing (record_date, product_id, quantity_out, payment_method, receipt_no, buyer_name, buyer_contact) 
                           VALUES ('$date', $id, $qty, '$payment', '$receipt', '$buyer_name', '$buyer_contact')");
         }
         echo "<script>alert('Checkout Successful!'); window.location.href='outsourcing_report.php';</script>";
         exit();
     }
+}
+
+// Fetch dynamic unit types from database
+$unit_types = [];
+$res_units = $conn->query("SELECT name FROM config_unit_types ORDER BY name ASC");
+if ($res_units) {
+    while($u = $res_units->fetch_assoc()) {
+        $unit_types[] = $u['name'];
+    }
+}
+// Fallback if table is empty
+if(empty($unit_types)) {
+    $unit_types = ['Sack', 'Kilo', 'Pieces', 'Pack', 'Tray', 'Can', 'Bottle'];
 }
 ?>
 
@@ -40,32 +49,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
     <link rel="stylesheet" href="css/styles.css?v=<?php echo time(); ?>">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        /* Modern Search Bar Styles */
         .search-container {
-            display: flex;
-            align-items: center;
-            background: #fff;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            padding: 4px;
-            flex: 1;
-            max-width: 300px;
+            display: flex; align-items: center; background: #fff; border: 1px solid #ccc;
+            border-radius: 6px; padding: 4px; flex: 1; max-width: 300px;
         }
-        .search-container input {
-            border: none;
-            outline: none;
-            padding: 8px 10px;
-            width: 100%;
-            font-size: 13px;
-        }
-        .search-container span {
-            background: #6a1b9a;
-            color: white;
-            border-radius: 4px;
-            padding: 8px 15px;
-            font-weight: bold;
-            font-size: 12px;
-        }
+        .search-container input { border: none; outline: none; padding: 8px 10px; width: 100%; font-size: 13px; }
+        .search-container span { background: #6a1b9a; color: white; border-radius: 4px; padding: 8px 15px; font-weight: bold; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -75,14 +64,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
             <div class="logo-container">
                 <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo">
             </div>
-            
             <nav class="sidebar-menu">
                 <a href="index.php" class="menu-btn">MEMBERSHIP DIRECTORY</a>
                 <a href="transactions.php" class="menu-btn">TRANSACTIONS</a>
                 <a href="inventory.php" class="menu-btn">INVENTORY MANAGEMENT</a>
                 <a href="pos.php" class="menu-btn active">SELL / OUTSOURCE (CART)</a>
                 <a href="outsourcing_report.php" class="menu-btn">OUTSOURCING LOGS</a>
-                <a href="#" class="menu-btn">DATABASE MANAGEMENT</a>
+                <a href="database_management.php" class="menu-btn">DATABASE MANAGEMENT</a>
             </nav>
         </aside>
 
@@ -90,14 +78,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
             <div class="top-action-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
                 <h1 class="page-title">Point of Sale & Outsourcing</h1>
                 
-                <div class="action-buttons" style="display: flex; gap: 15px; align-items: center;">
+                <div class="action-buttons" style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                    
                     <div class="search-container">
                         <input type="text" id="posSearch" placeholder="Search Products...">
                         <span>SEARCH</span>
                     </div>
 
                     <div class="input-group" style="flex-direction: row; align-items: center; margin: 0;">
-                        <label style="margin-right: 8px; margin-bottom: 0; font-size: 13px;">Sort By:</label>
+                        <label style="margin-right: 8px; margin-bottom: 0; font-size: 13px;">Unit:</label>
+                        <select id="posUnitFilter" onchange="filterProducts()" style="padding: 8px; font-size: 13px; border-radius: 6px;">
+                            <option value="all">All Units</option>
+                            <?php foreach($unit_types as $u): ?>
+                                <option value="<?= strtolower(htmlspecialchars($u)) ?>"><?= htmlspecialchars($u) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="input-group" style="flex-direction: row; align-items: center; margin: 0;">
+                        <label style="margin-right: 8px; margin-bottom: 0; font-size: 13px;">Sort:</label>
                         <select id="posSort" onchange="sortProducts()" style="padding: 8px; font-size: 13px; border-radius: 6px;">
                             <option value="alpha_asc">Alphabetical (A-Z)</option>
                             <option value="alpha_desc">Alphabetical (Z-A)</option>
@@ -105,7 +104,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
                             <option value="stock_asc">Stock (Low to High)</option>
                             <option value="price_desc">Price (High to Low)</option>
                             <option value="price_asc">Price (Low to High)</option>
-                            <option value="unit_type">Unit Type</option>
                         </select>
                     </div>
                 </div>
@@ -115,10 +113,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
                 <div class="products-area" id="products-grid">
                     <?php
                     $res = $conn->query("SELECT * FROM inventory WHERE current_quantity > 0 ORDER BY product_name ASC");
-                    
                     if ($res && $res->num_rows > 0) {
                         while($row = $res->fetch_assoc()) {
-                            // Data attributes added for Javascript Sorting
                             echo "
                             <div class='product-card' 
                                  data-id='{$row['product_id']}' 
@@ -193,13 +189,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
     <script>
         let cart = {};
 
-        // --- DYNAMIC PAYMENT METHOD UI ---
+        // --- PAYMENT UI LOGIC ---
         document.getElementById('payment_method').addEventListener('change', function() {
             const label = document.getElementById('receipt_label');
             const inputGroup = document.getElementById('receipt_group');
             const inputField = document.getElementById('receipt_no');
             
-            // Buyer elements
             const buyerName = document.getElementById('buyer_name');
             const buyerContact = document.getElementById('buyer_contact');
             const nameAsterisk = document.getElementById('name_asterisk');
@@ -210,26 +205,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
                 inputField.removeAttribute('required');
                 inputField.value = 'PENDING';
                 
-                // Require Buyer Info
                 buyerName.setAttribute('required', 'required');
                 buyerContact.setAttribute('required', 'required');
                 buyerName.placeholder = "Required for Pay Later";
                 buyerContact.placeholder = "Required for Pay Later";
                 nameAsterisk.style.display = 'inline';
                 contactAsterisk.style.display = 'inline';
-                
             } else {
                 inputGroup.style.display = 'flex';
                 inputField.setAttribute('required', 'required');
                 if (inputField.value === 'PENDING') inputField.value = '';
                 
-                if (this.value === 'GCash') {
-                    label.innerText = 'Reference No. *';
-                } else {
-                    label.innerText = 'Receipt No. or Invoice *';
-                }
+                label.innerText = (this.value === 'GCash') ? 'Reference No. *' : 'Receipt No. or Invoice *';
 
-                // Make Buyer Info Optional
                 buyerName.removeAttribute('required');
                 buyerContact.removeAttribute('required');
                 buyerName.placeholder = "Optional";
@@ -239,15 +227,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
             }
         });
 
-        // --- REALTIME SEARCH ---
-        document.getElementById('posSearch').addEventListener('keyup', function() {
-            let filter = this.value.toLowerCase();
+        // --- REALTIME SEARCH & FILTERING ---
+        function filterProducts() {
+            let searchFilter = document.getElementById('posSearch').value.toLowerCase();
+            let unitFilter = document.getElementById('posUnitFilter').value;
             let cards = document.querySelectorAll('.product-card');
+            
             cards.forEach(card => {
-                let text = card.textContent.toLowerCase();
-                card.style.display = text.includes(filter) ? '' : 'none';
+                let textMatch = card.textContent.toLowerCase().includes(searchFilter);
+                let unitMatch = (unitFilter === 'all') || (card.dataset.unit === unitFilter);
+                card.style.display = (textMatch && unitMatch) ? '' : 'none';
             });
-        });
+        }
+        document.getElementById('posSearch').addEventListener('keyup', filterProducts);
 
         // --- REALTIME SORTING ---
         function sortProducts() {
@@ -262,21 +254,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
                 if (sortType === 'stock_asc') return parseInt(a.dataset.maxStock) - parseInt(b.dataset.maxStock);
                 if (sortType === 'price_desc') return parseFloat(b.dataset.price) - parseFloat(a.dataset.price);
                 if (sortType === 'price_asc') return parseFloat(a.dataset.price) - parseFloat(b.dataset.price);
-                if (sortType === 'unit_type') return a.dataset.unit.localeCompare(b.dataset.unit);
             });
 
             container.innerHTML = '';
             cards.forEach(card => container.appendChild(card));
         }
 
-        // --- CART AND REALTIME STOCK LOGIC ---
+        // --- CART LOGIC ---
         function addToCart(id, name, price, maxQty) {
             if (cart[id]) {
-                if (cart[id].qty < maxQty) {
-                    cart[id].qty++;
-                } else {
-                    alert("Cannot exceed current stock limit of " + maxQty + "!");
-                }
+                if (cart[id].qty < maxQty) cart[id].qty++;
+                else alert("Cannot exceed current stock limit of " + maxQty + "!");
             } else {
                 cart[id] = { name: name, price: price, qty: 1, max: maxQty };
             }
@@ -324,8 +312,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
 
             if(!hasItems) container.innerHTML = '<p style="color: #888; text-align: center; font-size: 14px;">Cart is empty</p>';
             totalEl.innerText = total.toFixed(2);
-            
-            // Instantly update the visual stock numbers on the product cards
             updateStockDisplay();
         }
 
@@ -334,33 +320,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
             cards.forEach(card => {
                 let id = card.dataset.id;
                 let maxStock = parseInt(card.dataset.maxStock);
-                let currentStock = maxStock;
+                let currentStock = maxStock - (cart[id] ? cart[id].qty : 0);
                 
-                // If it is in the cart, deduct the quantity
-                if (cart[id]) {
-                    currentStock -= cart[id].qty;
-                }
-                
-                // Update the visual number safely
                 let stockSpan = document.getElementById('stock-count-' + id);
                 if (stockSpan) {
                     stockSpan.innerText = currentStock;
-                    // Visually disable/gray out card if out of stock
-                    if (currentStock === 0) {
-                        stockSpan.style.color = "red";
-                    } else {
-                        stockSpan.style.color = "inherit";
-                    }
+                    stockSpan.style.color = (currentStock === 0) ? "red" : "inherit";
                 }
             });
         }
 
         function processCheckout() {
-            // Standard form validation (triggers the 'required' popups)
-            if (!document.getElementById('checkoutForm').reportValidity()) {
-                return;
-            }
-
+            if (!document.getElementById('checkoutForm').reportValidity()) return;
             if (Object.keys(cart).length === 0) {
                 alert("Your cart is empty! Please add products first.");
                 return;

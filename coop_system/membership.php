@@ -22,7 +22,7 @@
                 <a href="inventory.php" class="menu-btn">INVENTORY MANAGEMENT</a>
                 <a href="pos.php" class="menu-btn">SELL / OUTSOURCE (CART)</a>
                 <a href="outsourcing_report.php" class="menu-btn">OUTSOURCING LOGS</a>
-                <a href="#" class="menu-btn">DATABASE MANAGEMENT</a>
+                <a href="database_management.php" class="menu-btn">DATABASE MANAGEMENT</a>
             </nav>
         </aside>
 

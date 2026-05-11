@@ -77,7 +77,7 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
                 <a href="inventory.php" class="menu-btn active">INVENTORY MANAGEMENT</a>
                 <a href="pos.php" class="menu-btn">SELL / OUTSOURCE (CART)</a>
                 <a href="outsourcing_report.php" class="menu-btn">OUTSOURCING LOGS</a>
-                <a href="#" class="menu-btn">DATABASE MANAGEMENT</a>
+                <a href="database_management.php" class="menu-btn">DATABASE MANAGEMENT</a>
             </nav>
         </aside>
 
