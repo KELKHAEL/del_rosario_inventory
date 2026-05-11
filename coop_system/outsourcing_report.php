@@ -28,8 +28,9 @@ $filter_month = $_GET['filter_month'] ?? '';
 $sort_option = $_GET['sort'] ?? 'date_desc';
 $time_display = "All Time";
 
-// Added receipt_no to the selection and grouping
-$sql = "SELECT i.product_id, i.product_name, i.product_type, i.price, i.quantity_type, o.payment_method, o.receipt_no,
+// Included the buyer_name and buyer_contact columns
+$sql = "SELECT i.product_id, i.product_name, i.product_type, i.price, i.quantity_type, 
+               o.payment_method, o.receipt_no, o.buyer_name, o.buyer_contact,
                SUM(o.quantity_out) as total_qty_out, MAX(o.record_date) as latest_date 
         FROM inventory_outsourcing o
         JOIN inventory i ON o.product_id = i.product_id 
@@ -47,8 +48,8 @@ if (!empty($filter_date)) {
     $time_display = date('F Y', strtotime($f_month));
 }
 
-// Group by receipt_no so unique transactions don't combine
-$sql .= " GROUP BY i.product_id, i.product_name, i.product_type, i.price, i.quantity_type, o.payment_method, o.receipt_no";
+// Group by the transaction identifiers (including the new buyer info)
+$sql .= " GROUP BY i.product_id, i.product_name, i.product_type, i.price, i.quantity_type, o.payment_method, o.receipt_no, o.buyer_name, o.buyer_contact";
 
 $order_by = "latest_date DESC, i.product_name ASC"; 
 if ($sort_option === 'name_asc') $order_by = "i.product_type ASC, i.product_name ASC";
@@ -77,7 +78,6 @@ if ($result && $result->num_rows > 0) {
 </head>
 <body>
     <div class="dashboard-container">
-        <!-- SIDEBAR -->
         <aside class="sidebar">
             <div class="logo-container">
                 <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo">
@@ -143,6 +143,7 @@ if ($result && $result->num_rows > 0) {
                             <tr>
                                 <th>Date</th>
                                 <th>Ref/Inv No.</th>
+                                <th>Buyer Details</th>
                                 <th>Product Name</th>
                                 <th>Payment</th>
                                 <th>Total OUT</th>
@@ -156,24 +157,60 @@ if ($result && $result->num_rows > 0) {
                                 $current_group = "";
                                 foreach($report_data as $row) {
                                     
+                                    // Set Warning Colors specifically for "Pay Later"
+                                    if ($row['payment_method'] === 'Pay Later') {
+                                        $bg_color = '#ffebee'; // light red/orange background
+                                        $text_color = '#c62828';
+                                    } elseif ($row['payment_method'] === 'GCash') {
+                                        $bg_color = '#e3f2fd'; // light blue
+                                        $text_color = '#1565c0';
+                                    } else {
+                                        $bg_color = '#fff3e0'; // light orange for cash
+                                        $text_color = '#e65100';
+                                    }
+
                                     $group_title = strtoupper($row['product_type']) . " - " . strtoupper($row['payment_method']);
+                                    
                                     if ($current_group !== $group_title) {
                                         $current_group = $group_title;
-                                        $bg_color = ($row['payment_method'] == 'GCash') ? '#e3f2fd' : '#fff3e0';
-                                        $text_color = ($row['payment_method'] == 'GCash') ? '#1565c0' : '#e65100';
                                         echo "<tr class='category-header' style='background-color: {$bg_color}; border-top: 2px solid {$text_color};'>
-                                                <td colspan='7' style='color: {$text_color}; font-weight: 800; padding: 12px 20px;'>{$current_group}</td>
+                                                <td colspan='8' style='color: {$text_color}; font-weight: 800; padding: 12px 20px;'>{$current_group}</td>
                                               </tr>";
                                     }
                                     
                                     $date = date('M d, Y', strtotime($row['latest_date']));
                                     $val = $row['total_qty_out'] * $row['price'];
+
+                                    // Dynamic Payment and Receipt text
+                                    if ($row['payment_method'] === 'Pay Later') {
+                                        $payment_display = "<span style='color:#c62828; font-weight:bold;'>PAY LATER</span> <span style='background: #c62828; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 5px;'>PENDING</span>";
+                                        $receipt_display = "<span style='color: #c62828; font-style: italic; font-weight: bold;'>PENDING</span>";
+                                    } else {
+                                        $payment_display = "<strong>" . htmlspecialchars($row['payment_method']) . "</strong>";
+                                        $receipt_display = "<span style='background: #eee; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;'>" . htmlspecialchars($row['receipt_no']) . "</span>";
+                                    }
+
+                                    // Build the Buyer details string securely
+                                    $buyer_info = "";
+                                    if (!empty($row['buyer_name'])) {
+                                        $buyer_info .= "<div><strong style='color: #333; text-transform: capitalize;'>".htmlspecialchars($row['buyer_name'])."</strong></div>";
+                                    }
+                                    if (!empty($row['buyer_contact'])) {
+                                        $buyer_info .= "<div style='font-size: 11px; color: #666;'>".htmlspecialchars($row['buyer_contact'])."</div>";
+                                    }
+                                    if (empty($buyer_info)) {
+                                        $buyer_info = "<span style='color: #aaa; font-style: italic;'>N/A</span>";
+                                    }
                                     
-                                    echo "<tr>
+                                    // Highlight individual Pay Later rows lightly
+                                    $row_style = ($row['payment_method'] === 'Pay Later') ? "background-color: #fffafa;" : "";
+
+                                    echo "<tr style='{$row_style}'>
                                             <td style='padding-left: 30px; color: #666;'>{$date}</td>
-                                            <td><span style='background: #eee; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;'>" . htmlspecialchars($row['receipt_no']) . "</span></td>
+                                            <td>{$receipt_display}</td>
+                                            <td>{$buyer_info}</td>
                                             <td><strong>" . htmlspecialchars($row['product_name']) . "</strong></td>
-                                            <td><strong>" . htmlspecialchars($row['payment_method']) . "</strong></td>
+                                            <td>{$payment_display}</td>
                                             <td><strong style='color: #d32f2f; font-size: 16px;'>-{$row['total_qty_out']}</strong> <span style='color: #888;'>{$row['quantity_type']}s</span></td>
                                             <td><strong>₱" . number_format($val, 2) . "</strong></td>
                                             <td style='text-align: right;'>
@@ -187,7 +224,7 @@ if ($result && $result->num_rows > 0) {
                                           </tr>";
                                 }
                             } else {
-                                echo "<tr><td colspan='7' style='text-align:center; padding: 60px; color:#888;'>No records found for this timeframe.</td></tr>";
+                                echo "<tr><td colspan='8' style='text-align:center; padding: 60px; color:#888;'>No records found for this timeframe.</td></tr>";
                             }
                             ?>
                         </tbody>

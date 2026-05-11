@@ -7,11 +7,37 @@
     <title>Member Directory - Coop DBMS</title>
     <link rel="stylesheet" href="css/styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Modern Search Bar Styles */
+        .search-container {
+            display: flex;
+            align-items: center;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            padding: 4px;
+            width: 300px;
+        }
+        .search-container input {
+            border: none;
+            outline: none;
+            padding: 8px 10px;
+            width: 100%;
+            font-size: 13px;
+        }
+        .search-container span {
+            background: #6a1b9a;
+            color: white;
+            border-radius: 4px;
+            padding: 8px 15px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+    </style>
 </head>
 <body>
 
     <div class="dashboard-container">
-        <!-- SIDEBAR -->
         <aside class="sidebar">
             <div class="logo-container">
                 <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo">
@@ -27,13 +53,18 @@
             </nav>
         </aside>
 
-        <!-- MAIN CONTENT AREA -->
         <main class="main-content">
             <div class="top-action-bar">
                 <h1 class="page-title">Membership Management</h1>
                 
                 <div class="action-buttons">
-                    <form action="import_excel.php" method="POST" enctype="multipart/form-data" class="upload-form" style="display: flex; gap: 10px; align-items: center;">
+                    
+                    <div class="search-container">
+                        <input type="text" id="liveSearch" placeholder="Search Name, ID, Occupation...">
+                        <span>SEARCH</span>
+                    </div>
+
+                    <form action="import_excel.php" method="POST" enctype="multipart/form-data" class="upload-form" style="display: flex; gap: 10px; align-items: center; margin-left: 15px;">
                         <input type="file" name="excel_file" accept=".xls,.xlsx" required>
                         <button type="submit" class="btn btn-primary">UPLOAD EXCEL</button>
                     </form>
@@ -42,10 +73,9 @@
                 </div>
             </div>
 
-            <!-- THE DATA TABLE -->
             <div class="content-display">
                 <div class="data-table-container">
-                    <table class="data-table">
+                    <table class="data-table" id="membersTable">
                         <thead>
                             <tr>
                                 <th>ID</th>
@@ -57,6 +87,7 @@
                         </thead>
                         <tbody>
                             <?php
+                            // Fetch ALL members (Filtering is now handled by JavaScript instantly)
                             $sql = "SELECT * FROM members ORDER BY member_id DESC";
                             $result = $conn->query($sql);
 
@@ -66,11 +97,9 @@
                                     
                                     // Construct the full name (Last Name, First Name format)
                                     $full_name = htmlspecialchars($row['last_name'] . ", " . $row['first_name'] . " " . $row['middle_name']);
-                                    
-                                    // Clean up empty spaces if middle name is missing
                                     $full_name = trim(str_replace('  ', ' ', $full_name));
 
-                                    echo "<tr>
+                                    echo "<tr class='member-row'>
                                             <td><strong>{$formatted_id}</strong></td>
                                             <td style='text-transform: capitalize;'>{$full_name}</td>
                                             <td>" . htmlspecialchars($row['sex'] ?? 'N/A') . "</td>
@@ -82,7 +111,7 @@
                                           </tr>";
                                 }
                             } else {
-                                echo "<tr><td colspan='5' style='text-align:center; padding: 60px; color:#888;'>No members found. Click '+ Add New Member' or Upload an Excel file to start.</td></tr>";
+                                echo "<tr id='noDataRow'><td colspan='5' style='text-align:center; padding: 60px; color:#888;'>No members found. Click '+ Add New Member' or Upload an Excel file to start.</td></tr>";
                             }
                             ?>
                         </tbody>
@@ -91,6 +120,25 @@
             </div>
         </main>
     </div>
+
+    <script>
+        document.getElementById('liveSearch').addEventListener('keyup', function() {
+            let filter = this.value.toLowerCase();
+            let rows = document.querySelectorAll('.member-row');
+
+            rows.forEach(row => {
+                // Grab all the text inside the row (ID, Name, Sex, Occupation)
+                let rowText = row.textContent.toLowerCase();
+                
+                // If the text contains what the user typed, show it. Otherwise, hide it.
+                if (rowText.includes(filter)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    </script>
 
 </body>
 </html>
