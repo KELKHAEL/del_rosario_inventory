@@ -78,7 +78,7 @@
                     <table class="data-table" id="membersTable">
                         <thead>
                             <tr>
-                                <th>ID</th>
+                                <th>Form ID</th>
                                 <th>Member Name</th>
                                 <th>Sex</th>
                                 <th>Occupation</th>
@@ -93,14 +93,17 @@
 
                             if ($result && $result->num_rows > 0) {
                                 while($row = $result->fetch_assoc()) {
-                                    $formatted_id = "#26-" . str_pad($row['member_id'], 3, '0', STR_PAD_LEFT);
+                                    
+                                    // FIX: Display the actual form_id from the database. 
+                                    // If it's NULL or empty, it stays blank.
+                                    $display_id = !empty($row['form_id']) ? htmlspecialchars($row['form_id']) : '';
                                     
                                     // Construct the full name (Last Name, First Name format)
                                     $full_name = htmlspecialchars($row['last_name'] . ", " . $row['first_name'] . " " . $row['middle_name']);
                                     $full_name = trim(str_replace('  ', ' ', $full_name));
 
                                     echo "<tr class='member-row'>
-                                            <td><strong>{$formatted_id}</strong></td>
+                                            <td><strong>{$display_id}</strong></td>
                                             <td style='text-transform: capitalize;'>{$full_name}</td>
                                             <td>" . htmlspecialchars($row['sex'] ?? 'N/A') . "</td>
                                             <td>" . htmlspecialchars($row['occupation'] ?? 'N/A') . "</td>

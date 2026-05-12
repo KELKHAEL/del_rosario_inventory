@@ -34,7 +34,9 @@ while($b_row = $beneficiaries_result->fetch_assoc()) {
 $stmt_ben->close();
 
 // Formatted Data
-$formatted_id = "#26-" . str_pad($member['member_id'], 3, '0', STR_PAD_LEFT);
+// FIX: Pull actual form_id from the database. Leave blank if empty/null.
+$formatted_id = !empty($member['form_id']) ? htmlspecialchars($member['form_id']) : '';
+
 $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date_of_birth'])) : 'N/A';
 ?>
 
@@ -131,6 +133,14 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
             font-weight: bold; 
             font-size: 14px;
             text-align: left;
+        }
+
+        /* Ensure the underline still shows even if the ID is blank */
+        .form-id-display {
+            text-decoration: underline; 
+            font-weight: normal;
+            display: inline-block;
+            min-width: 80px; 
         }
 
         .title-block h3 {
@@ -243,7 +253,7 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
                 </div>
 
                 <div class="title-block">
-                    <div class="form-no-text">Form No. <span style="text-decoration: underline; font-weight: normal;"><?= $formatted_id ?></span></div>
+                    <div class="form-no-text">Form No. <span class="form-id-display"><?= $formatted_id ?></span></div>
                     <h3>MEMBERSHIP PROFILE</h3>
                 </div>
 

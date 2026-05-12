@@ -1,54 +1,84 @@
 <?php
-// Connect to the database
 include 'db.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // 1. Capture Member Data (Using real_escape_string to prevent basic SQL injection)
-    $last_name = $conn->real_escape_string($_POST['last_name']);
-    $first_name = $conn->real_escape_string($_POST['first_name']);
-    $middle_name = $conn->real_escape_string($_POST['middle_name']);
-    $dob = $conn->real_escape_string($_POST['date_of_birth']);
-    $birth_place = $conn->real_escape_string($_POST['birth_place']);
-    $civil_status = $conn->real_escape_string($_POST['civil_status']);
-    $sss = $conn->real_escape_string($_POST['sss_gsis_no']);
-    $tin = $conn->real_escape_string($_POST['tin_no']);
-    $postal = $conn->real_escape_string($_POST['postal_code']);
-    $address = $conn->real_escape_string($_POST['address']);
+    
+    // 1. Capture All Form Data Safely
+    // We use strtoupper() here to keep your database consistent with capitalized text
+    $form_id      = !empty($_POST['form_id']) ? trim($_POST['form_id']) : null;
+    $last_name    = strtoupper(trim($_POST['last_name'] ?? ''));
+    $first_name   = strtoupper(trim($_POST['first_name'] ?? ''));
+    $middle_name  = strtoupper(trim($_POST['middle_name'] ?? ''));
+    $dob          = !empty($_POST['date_of_birth']) ? $_POST['date_of_birth'] : null;
+    $birth_place  = strtoupper(trim($_POST['birth_place'] ?? ''));
+    $civil_status = strtoupper(trim($_POST['civil_status'] ?? ''));
+    
+    $religion     = strtoupper(trim($_POST['religion'] ?? ''));
+    $sex          = strtoupper(trim($_POST['sex'] ?? ''));
+    $tribe        = strtoupper(trim($_POST['tribe'] ?? ''));
+    
+    $sss          = trim($_POST['sss_gsis_no'] ?? '');
+    $tin          = trim($_POST['tin_no'] ?? '');
+    $postal       = trim($_POST['postal_code'] ?? '');
+    $address      = strtoupper(trim($_POST['address'] ?? ''));
+    $business_add = strtoupper(trim($_POST['business_office_address'] ?? ''));
+    
+    $education    = strtoupper(trim($_POST['educational_attainment'] ?? ''));
+    $employment   = strtoupper(trim($_POST['present_employment_business'] ?? ''));
+    $occupation   = strtoupper(trim($_POST['occupation'] ?? ''));
+    $income       = strtoupper(trim($_POST['monthly_income'] ?? ''));
 
-    // 2. Insert the main member
-    $sql_member = "INSERT INTO members (last_name, first_name, middle_name, date_of_birth, birth_place, civil_status, sss_gsis_no, tin_no, postal_code, address) 
-                   VALUES ('$last_name', '$first_name', '$middle_name', '$dob', '$birth_place', '$civil_status', '$sss', '$tin', '$postal', '$address')";
+    // 2. Prepare the full SQL INSERT statement
+    $stmt = $conn->prepare("INSERT INTO members (
+        form_id, last_name, first_name, middle_name, date_of_birth, 
+        birth_place, civil_status, religion, sex, tribe, 
+        sss_gsis_no, tin_no, postal_code, address, business_office_address, 
+        educational_attainment, present_employment_business, occupation, monthly_income
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    
+    // Bind the 19 parameters
+    $stmt->bind_param(
+        "sssssssssssssssssss", 
+        $form_id, $last_name, $first_name, $middle_name, $dob, 
+        $birth_place, $civil_status, $religion, $sex, $tribe, 
+        $sss, $tin, $postal, $address, $business_add, 
+        $education, $employment, $occupation, $income
+    );
 
-    if ($conn->query($sql_member) === TRUE) {
-        // Get the Auto-Increment ID of the member we just saved
-        $new_member_id = $conn->insert_id;
+    // 3. Execute and Check Member Insertion
+    if ($stmt->execute()) {
+        $last_inserted_member_id = $stmt->insert_id;
+        $stmt->close();
 
-        // 3. Process Beneficiaries (if any exist)
-        if (isset($_POST['ben_last_name']) && !empty($_POST['ben_last_name'][0])) {
-            $ben_count = count($_POST['ben_last_name']);
+        // 4. Process Beneficiaries (if any were added)
+        if (!empty($_POST['ben_last_name'])) {
+            $stmt_ben = $conn->prepare("INSERT INTO beneficiaries (member_id, last_name, first_name, middle_name, date_of_birth, relationship) VALUES (?, ?, ?, ?, ?, ?)");
             
-            for ($i = 0; $i < $ben_count; $i++) {
-                $b_last = $conn->real_escape_string($_POST['ben_last_name'][$i]);
-                $b_first = $conn->real_escape_string($_POST['ben_first_name'][$i]);
-                $b_mid = $conn->real_escape_string($_POST['ben_middle_name'][$i]);
-                $b_dob = $conn->real_escape_string($_POST['ben_dob'][$i]);
-                $b_rel = $conn->real_escape_string($_POST['ben_rel'][$i]);
+            // Loop through the dynamically added beneficiaries
+            for ($i = 0; $i < count($_POST['ben_last_name']); $i++) {
+                $b_last   = strtoupper(trim($_POST['ben_last_name'][$i] ?? ''));
+                $b_first  = strtoupper(trim($_POST['ben_first_name'][$i] ?? ''));
+                $b_middle = strtoupper(trim($_POST['ben_middle_name'][$i] ?? ''));
+                $b_dob    = !empty($_POST['ben_dob'][$i]) ? $_POST['ben_dob'][$i] : null;
+                $b_rel    = strtoupper(trim($_POST['ben_rel'][$i] ?? ''));
 
-                // Only insert if the row isn't blank
-                if($b_last != "" && $b_first != "") {
-                    $sql_ben = "INSERT INTO beneficiaries (member_id, last_name, first_name, middle_name, date_of_birth, relationship) 
-                                VALUES ('$new_member_id', '$b_last', '$b_first', '$b_mid', '$b_dob', '$b_rel')";
-                    $conn->query($sql_ben);
+                // Only insert if they at least provided a first and last name
+                if (!empty($b_last) && !empty($b_first)) {
+                    $stmt_ben->bind_param("isssss", $last_inserted_member_id, $b_last, $b_first, $b_middle, $b_dob, $b_rel);
+                    $stmt_ben->execute();
                 }
             }
+            $stmt_ben->close();
         }
-        
-        // Success! Redirect back to the form with a success message
-        echo "<script>alert('Membership successfully saved!'); window.location.href='membership.php';</script>";
+
+        echo "<script>alert('Member successfully added!'); window.location.href='index.php';</script>";
     } else {
-        echo "Error: " . $sql_member . "<br>" . $conn->error;
+        // If something fails, show the exact SQL error so you can easily spot it
+        echo "<script>alert('Error adding member: " . addslashes($conn->error) . "'); window.history.back();</script>";
     }
-    
-    $conn->close();
+} else {
+    // Prevent direct access to this script via URL
+    header("Location: index.php");
+    exit();
 }
 ?>
