@@ -66,10 +66,12 @@
 
                     <form action="import_excel.php" method="POST" enctype="multipart/form-data" class="upload-form" style="display: flex; gap: 10px; align-items: center; margin-left: 15px;">
                         <input type="file" name="excel_file" accept=".xls,.xlsx" required>
-                        <button type="submit" class="btn btn-primary">UPLOAD EXCEL</button>
+                        <button type="submit" class="btn btn-primary" style="white-space: nowrap;">UPLOAD EXCEL</button>
                     </form>
                     
-                    <a href="membership.php" class="btn btn-primary" style="text-decoration: none;">+ ADD NEW MEMBER</a>
+                    <a href="export_excel.php" class="btn btn-primary" style="text-decoration: none; background-color: #107c41; border: none; margin-left: 10px; white-space: nowrap;">EXPORT EXCEL</a>
+                    
+                    <a href="membership.php" class="btn btn-primary" style="text-decoration: none; margin-left: 10px; white-space: nowrap;">+ ADD NEW MEMBER</a>
                 </div>
             </div>
 
@@ -94,7 +96,7 @@
                             if ($result && $result->num_rows > 0) {
                                 while($row = $result->fetch_assoc()) {
                                     
-                                    // FIX: Display the actual form_id from the database. 
+                                    // Display the actual form_id from the database. 
                                     // If it's NULL or empty, it stays blank.
                                     $display_id = !empty($row['form_id']) ? htmlspecialchars($row['form_id']) : '';
                                     

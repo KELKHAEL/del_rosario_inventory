@@ -11,97 +11,104 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
     $worksheet = $spreadsheet->getActiveSheet();
     $rows = $worksheet->toArray();
 
-    // --- FETCH EXCEL HEADER MAPPINGS FROM DATABASE ---
     $db_map = [];
     $res_map = $conn->query("SELECT system_field, excel_header_name FROM config_excel_headers");
     
     if ($res_map && $res_map->num_rows > 0) {
         while($m = $res_map->fetch_assoc()) {
-            // Aggressively clean the database mapping string
             $db_map[$m['system_field']] = preg_replace('/[^a-z0-9]/', '', strtolower(trim($m['excel_header_name'])));
         }
     } else {
-        // Fallback map just in case the database table is empty
         $db_map = [
             'form_id' => 'formid', 'member_name' => 'membername', 'dob' => 'dateofbirth',
             'birth_place' => 'birthplace', 'civil_status' => 'civilstatus', 'religion' => 'religion',
             'sex' => 'sex', 'tribe' => 'tribe', 'sss_no' => 'sssgsisno', 'tin_no' => 'tinno',
             'postal_code' => 'postalcode', 'address' => 'address', 'business_address' => 'businessofficeaddress',
             'education' => 'educationalattainment', 'employment' => 'presentemploymentbusinessactivities',
-            'occupation' => 'occupation', 'income' => 'monthlyincome', 'ben_name' => 'beneficiariesname',
+            'occupation' => 'occupation', 'income' => 'monthlyincome', 'ben_name' => 'beneficiariesnames',
             'ben_dob' => 'beneficiariesdateofbirth', 'ben_rel' => 'relationshiptothemember'
         ];
     }
 
-    // 1. ROBUST DATE PARSER
     function parseDate($input) {
         $input = trim((string)$input);
         if (empty($input)) return null;
         
         if (is_numeric($input)) {
-            return date('Y-m-d', Date::excelToTimestamp($input));
+            return date('Y-m-d', Date::excelToTimestamp((float)$input));
         }
 
-        // Clean out rogue commas that break the strtotime parser
-        $cleanDate = str_replace(',', ' ', $input);
-        // Collapse multiple accidental spaces into a single space
+        $time = strtotime($input);
+        if ($time !== false) {
+            return date('Y-m-d', $time);
+        }
+
+        $cleanDate = str_replace([',', '.'], ' ', $input);
         $cleanDate = preg_replace('/\s+/', ' ', $cleanDate);
         $cleanDate = trim($cleanDate);
 
         $time = strtotime($cleanDate);
-        return ($time !== false && $time > 0) ? date('Y-m-d', $time) : null;
+        if ($time !== false) {
+            return date('Y-m-d', $time);
+        }
+
+        if (strpos($cleanDate, '/') !== false) {
+            $parts = explode('/', $cleanDate);
+            if (count($parts) === 3 && (int)$parts[0] > 12) {
+                $cleanDate = str_replace('/', '-', $cleanDate);
+                $time = strtotime($cleanDate);
+                if ($time !== false) {
+                    return date('Y-m-d', $time);
+                }
+            }
+        }
+
+        $formats = ['d/m/Y', 'm/d/Y', 'Y-m-d', 'd-m-y', 'm-d-y'];
+        foreach ($formats as $format) {
+            $d = DateTime::createFromFormat($format, $input);
+            if ($d !== false) {
+                return $d->format('Y-m-d');
+            }
+        }
+
+        return null;
     }
 
-    // 2. THE ULTIMATE NAME SPLITTER
-    // Added a parameter $isStrictMember to enforce the new rule
     function splitName($fullName, $isStrictMember = false) {
         $last = ''; $first = ''; $middle = '';
         
-        // Remove periods (so "M.I." becomes "MI") and collapse spaces
-        $cleanName = preg_replace('/\./', '', $fullName);
-        $cleanName = preg_replace('/\s+/', ' ', trim($cleanName));
+        // CRITICAL FIX: We no longer strip periods from the name.
+        $cleanName = preg_replace('/\s+/', ' ', trim($fullName));
         
         if (strpos($cleanName, ',') !== false) {
-            // FORMAT: "Lastname, Firstname Secondname MI" or "Lastname, Firstname Middlename"
             $parts = explode(',', $cleanName, 2);
             $last = trim($parts[0]);
             
             $fm_parts = explode(' ', trim($parts[1]));
             
             if (count($fm_parts) > 1) {
-                // If it is a member, the absolute last word is ALWAYS the middle name.
                 if ($isStrictMember) {
                     $middle = array_pop($fm_parts);
                 } else {
-                    // Original Beneficiary Logic
                     $potential_mi = end($fm_parts);
-                    
-                    // If the last word is 1 letter (M.I.) OR if there are 3+ words after the comma, we assume the last is a middle name/initial
-                    if (strlen($potential_mi) === 1 || count($fm_parts) >= 3) {
+                    if (strlen($potential_mi) === 1 || count($fm_parts) >= 3 || strpos($potential_mi, '.') !== false) {
                         $middle = array_pop($fm_parts);
                     }
                 }
-                
                 $first = implode(' ', $fm_parts); 
             } else {
                 $first = trim($parts[1]);
             }
         } else {
-            // FORMAT: "Firstname MI Lastname" or "Firstname Secondname Lastname"
             $name_parts = explode(' ', $cleanName);
-            
-            // Assume the last word is always the Last Name
             $last = count($name_parts) > 1 ? array_pop($name_parts) : $cleanName;
             
             if (count($name_parts) > 0) {
                 if ($isStrictMember) {
-                    // If it is a member, the word before the last name is the middle name.
                     $middle = array_pop($name_parts);
                 } else {
-                    // Original Beneficiary Logic
-                    // Check if the word right before the last name is an initial
                     $potential_mi = end($name_parts);
-                    if (strlen($potential_mi) === 1) {
+                    if (strlen($potential_mi) === 1 || strpos($potential_mi, '.') !== false) {
                         $middle = array_pop($name_parts);
                     }
                 }
@@ -113,10 +120,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
     }
 
     $last_inserted_member_id = null;
-    // Keep track of the form ID so we can insert it.
-    $last_inserted_form_id = null;
     
-    // --- DYNAMIC HEADER DETECTION ---
     $excel_header_index_map = [];
     $start_row = 1;
     $form_id_header = $db_map['form_id']; 
@@ -127,7 +131,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         if ($first_cell_clean === $form_id_header) {
             $start_row = $i + 1;
             foreach($rows[$i] as $col_index => $col_name) {
-                // Aggressively clean the excel header to match the db mapping
                 $clean_col = preg_replace('/[^a-z0-9]/', '', strtolower((string)$col_name));
                 if(!empty($clean_col)) {
                     $excel_header_index_map[$clean_col] = $col_index;
@@ -137,7 +140,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         }
     }
 
-    // Helper to safely pull mapped columns
     function getVal($row, $excel_map, $db_map, $system_field) {
         $expected_header = $db_map[$system_field] ?? '';
         if ($expected_header !== '' && isset($excel_map[$expected_header]) && isset($row[$excel_map[$expected_header]])) {
@@ -147,7 +149,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         return '';
     }
 
-    // Loop through Excel Rows
     for ($i = $start_row; $i < count($rows); $i++) {
         $row = $rows[$i];
         if (!is_array($row)) continue;
@@ -156,38 +157,54 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         $full_name      = getVal($row, $excel_header_index_map, $db_map, 'member_name');
         $ben_name       = getVal($row, $excel_header_index_map, $db_map, 'ben_name');
 
-        // If BOTH member name and beneficiary name are totally empty, skip this row completely to avoid blank garbage data.
         if (empty($full_name) && empty($ben_name)) {
             continue;
         }
 
-        // -- 1. PROCESS MEMBER (Only if the Member Name column is not empty) --
         if (!empty($full_name)) {
-            // Use strict member splitting rule
             list($last_name, $first_name, $middle_name) = splitName($full_name, true);
 
-            // AUTOMATED DUPLICATE CHECKER
-            $check_stmt = $conn->prepare("SELECT member_id FROM members WHERE last_name = ? AND first_name = ? AND middle_name = ?");
-            $check_stmt->bind_param("sss", $last_name, $first_name, $middle_name);
-            $check_stmt->execute();
-            $check_res = $check_stmt->get_result();
+            $expected_dob_header = $db_map['dob'] ?? '';
+            $dob_val = (isset($excel_header_index_map[$expected_dob_header]) && isset($row[$excel_header_index_map[$expected_dob_header]])) ? $row[$excel_header_index_map[$expected_dob_header]] : '';
+            $dob = parseDate($dob_val);
 
-            if ($check_res->num_rows > 0) {
-                // Duplicate found! Skip inserting the member, but save their ID so we can attach their beneficiaries below.
-                $last_inserted_member_id = $check_res->fetch_assoc()['member_id'];
+            // CRITICAL FIX: Match by Form ID first. It is mathematically impossible for this to fail or create duplicates.
+            $existing_member_id = null;
+
+            if (!empty($form_id)) {
+                $check_stmt = $conn->prepare("SELECT member_id FROM members WHERE form_id = ?");
+                $check_stmt->bind_param("s", $form_id);
+                $check_stmt->execute();
+                $check_res = $check_stmt->get_result();
+                if ($check_res->num_rows > 0) {
+                    $existing_member_id = $check_res->fetch_assoc()['member_id'];
+                }
                 $check_stmt->close();
+            }
+
+            if ($existing_member_id === null) {
+                $check_stmt = $conn->prepare("SELECT member_id FROM members WHERE last_name = ? AND first_name = ?");
+                $check_stmt->bind_param("ss", $last_name, $first_name);
+                $check_stmt->execute();
+                $check_res = $check_stmt->get_result();
+                if ($check_res->num_rows > 0) {
+                    $existing_member_id = $check_res->fetch_assoc()['member_id'];
+                }
+                $check_stmt->close();
+            }
+
+            if ($existing_member_id !== null) {
+                $last_inserted_member_id = $existing_member_id;
+                
+                if ($dob !== null) {
+                    $update_stmt = $conn->prepare("UPDATE members SET date_of_birth = ? WHERE member_id = ?");
+                    $update_stmt->bind_param("si", $dob, $last_inserted_member_id);
+                    $update_stmt->execute();
+                    $update_stmt->close();
+                }
+                
             } else {
-                $check_stmt->close();
-
-                // Not a duplicate, insert new member.
-                
-                // If form_id is blank, set it to NULL
                 $form_id_insert = ($form_id === '') ? null : $form_id;
-                
-                $expected_dob_header = $db_map['dob'] ?? '';
-                $dob_val = (isset($excel_header_index_map[$expected_dob_header]) && isset($row[$excel_header_index_map[$expected_dob_header]])) ? $row[$excel_header_index_map[$expected_dob_header]] : '';
-                $dob = parseDate($dob_val);
-                
                 $birth_place    = getVal($row, $excel_header_index_map, $db_map, 'birth_place');
                 $civil_status   = getVal($row, $excel_header_index_map, $db_map, 'civil_status');
                 $religion       = getVal($row, $excel_header_index_map, $db_map, 'religion');
@@ -207,7 +224,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
                 if (strpos($raw_sex, 'female') !== false || $raw_sex === 'f') $sex = 'FEMALE';
                 elseif (strpos($raw_sex, 'male') !== false || $raw_sex === 'm') $sex = 'MALE';
 
-                // NOTE: Make sure your `members` table has the `form_id` column as discussed in the previous step.
                 $stmt = $conn->prepare("INSERT INTO members (form_id, last_name, first_name, middle_name, date_of_birth, birth_place, civil_status, religion, sex, tribe, sss_gsis_no, tin_no, postal_code, address, business_office_address, educational_attainment, present_employment_business, occupation, monthly_income) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 $stmt->bind_param("sssssssssssssssssss", $form_id_insert, $last_name, $first_name, $middle_name, $dob, $birth_place, $civil_status, $religion, $sex, $tribe, $sss, $tin, $postal, $address, $business_add, $education, $employment, $occupation, $income);
                 $stmt->execute();
@@ -217,24 +233,48 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
             }
         }
 
-        // -- 2. PROCESS BENEFICIARY (Only if there is a beneficiary name AND we successfully tracked a member ID) --
         if (!empty($ben_name) && $last_inserted_member_id !== null) {
-            // Use normal beneficiary splitting rule
             list($ben_last, $ben_first, $ben_middle) = splitName($ben_name, false);
 
+            // CRITICAL FIX: Forcefully check all known spellings for the Beneficiary Date of Birth.
+            $ben_dob_val = '';
             $expected_ben_dob = $db_map['ben_dob'] ?? '';
-            $ben_dob_val = (isset($excel_header_index_map[$expected_ben_dob]) && isset($row[$excel_header_index_map[$expected_ben_dob]])) ? $row[$excel_header_index_map[$expected_ben_dob]] : '';
-            $ben_dob = parseDate($ben_dob_val);
             
+            if ($expected_ben_dob !== '' && isset($excel_header_index_map[$expected_ben_dob])) {
+                $ben_dob_val = $row[$excel_header_index_map[$expected_ben_dob]];
+            } elseif (isset($excel_header_index_map['beneficiariesdateofbirth'])) {
+                $ben_dob_val = $row[$excel_header_index_map['beneficiariesdateofbirth']];
+            } elseif (isset($excel_header_index_map['beneficiarydateofbirth'])) {
+                $ben_dob_val = $row[$excel_header_index_map['beneficiarydateofbirth']];
+            }
+
+            $ben_dob = parseDate($ben_dob_val);
             $ben_rel = getVal($row, $excel_header_index_map, $db_map, 'ben_rel');
 
-            $stmt_ben = $conn->prepare("INSERT INTO beneficiaries (member_id, last_name, first_name, middle_name, date_of_birth, relationship) VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt_ben->bind_param("isssss", $last_inserted_member_id, $ben_last, $ben_first, $ben_middle, $ben_dob, $ben_rel);
-            $stmt_ben->execute();
-            $stmt_ben->close();
+            $first_name_keyword = explode(' ', trim($ben_first))[0] . '%'; 
+
+            $b_check = $conn->prepare("SELECT 1 FROM beneficiaries WHERE member_id = ? AND last_name = ? AND first_name LIKE ?");
+            $b_check->bind_param("iss", $last_inserted_member_id, $ben_last, $first_name_keyword);
+            $b_check->execute();
+            $b_res = $b_check->get_result();
+
+            if ($b_res->num_rows > 0) {
+                if ($ben_dob !== null) {
+                    $upd_b = $conn->prepare("UPDATE beneficiaries SET date_of_birth = ?, relationship = ? WHERE member_id = ? AND last_name = ? AND first_name LIKE ?");
+                    $upd_b->bind_param("ssiss", $ben_dob, $ben_rel, $last_inserted_member_id, $ben_last, $first_name_keyword);
+                    $upd_b->execute();
+                    $upd_b->close();
+                }
+            } else {
+                $stmt_ben = $conn->prepare("INSERT INTO beneficiaries (member_id, last_name, first_name, middle_name, date_of_birth, relationship) VALUES (?, ?, ?, ?, ?, ?)");
+                $stmt_ben->bind_param("isssss", $last_inserted_member_id, $ben_last, $ben_first, $ben_middle, $ben_dob, $ben_rel);
+                $stmt_ben->execute();
+                $stmt_ben->close();
+            }
+            $b_check->close();
         }
     }
 
-    echo "<script>alert('Excel Upload Complete! Duplicates were merged.'); window.location.href='index.php';</script>";
+    echo "<script>alert('Excel Upload Complete! System forcefully synced all Information.'); window.location.href='index.php';</script>";
 }
 ?>
