@@ -2,21 +2,31 @@
 include 'db.php'; 
 
 // Fetch Dynamic Configurations
-function fetchConfig($conn, $table) {
+// Fail-Safe Configuration Fetcher
+function fetchConfig($conn, $table, $default_fallback = []) {
     $data = [];
-    $res = $conn->query("SELECT name FROM $table ORDER BY name ASC");
-    if ($res && $res->num_rows > 0) {
-        while($row = $res->fetch_assoc()) {
-            $data[] = $row['name'];
+    try {
+        $res = $conn->query("SELECT name FROM $table ORDER BY name ASC");
+        if ($res && $res->num_rows > 0) {
+            while($row = $res->fetch_assoc()) {
+                $data[] = $row['name'];
+            }
+        } else {
+            return $default_fallback; // Return default if empty
         }
+    } catch (Exception $e) {
+        // If table doesn't exist, don't crash. Just return the default fallback.
+        return $default_fallback; 
     }
     return $data;
 }
 
-$occupations = fetchConfig($conn, 'config_occupations');
-$incomes = fetchConfig($conn, 'config_monthly_income');
-$civil_statuses = fetchConfig($conn, 'config_civil_status');
+// Fetch dynamic data, with safe defaults if the database tables are missing or empty
+$occupations = fetchConfig($conn, 'config_occupations', ['Private Employee', 'Gov\'t Employee', 'Self-Employed', 'Others']);
+$incomes = fetchConfig($conn, 'config_monthly_income', ['Below 5,000', '5,000 - 9,999', '10,000+']);
+$civil_statuses = fetchConfig($conn, 'config_civil_status', ['Single', 'Married', 'Widowed']);
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
