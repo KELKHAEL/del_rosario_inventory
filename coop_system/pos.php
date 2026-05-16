@@ -51,194 +51,237 @@ if ($res_units) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sell / Outsource - Coop DBMS</title>
-    <link rel="stylesheet" href="css/styles.css?v=<?php echo time(); ?>">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-        .search-container {
-            display: flex; align-items: center; background: #fff; border: 1px solid #ccc;
-            border-radius: 6px; padding: 4px; flex: 1; max-width: 300px;
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], },
+                    colors: { primary: '#6a1b9a', primaryDark: '#570591', }
+                }
+            }
         }
-        .search-container input { border: none; outline: none; padding: 8px 10px; width: 100%; font-size: 13px; }
-        .search-container span { background: #6a1b9a; color: white; border-radius: 4px; padding: 8px 15px; font-weight: bold; font-size: 12px; }
-    </style>
+    </script>
 </head>
-<body>
+<body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
 
-    <div class="dashboard-container">
-        <aside class="sidebar">
-            <div class="logo-container">
-                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo">
+    <div class="flex h-screen w-full">
+
+        <div id="mobile-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-40 hidden md:hidden transition-opacity" onclick="toggleSidebar()"></div>
+
+        <aside id="sidebar" class="bg-white w-72 border-r border-gray-200 flex flex-col transition-transform transform -translate-x-full md:translate-x-0 fixed md:relative z-50 h-full shadow-lg md:shadow-none">
+            <div class="p-6 flex items-center justify-center border-b border-gray-100 relative">
+                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="h-16 w-auto">
+                <button class="absolute top-4 right-4 md:hidden text-gray-400 hover:text-gray-800" onclick="toggleSidebar()">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
             </div>
-            <nav class="sidebar-menu">
-                <a href="index.php" class="menu-btn">MEMBERSHIP DIRECTORY</a>
-                <a href="transactions.php" class="menu-btn">TRANSACTIONS</a>
-                <a href="inventory.php" class="menu-btn">INVENTORY MANAGEMENT</a>
-                <a href="pos.php" class="menu-btn active">SELL / OUTSOURCE (CART)</a>
-                <a href="outsourcing_report.php" class="menu-btn">OUTSOURCING LOGS</a>
-                <a href="database_management.php" class="menu-btn">DATABASE MANAGEMENT</a>
+            
+            <nav class="flex-1 overflow-y-auto py-4 flex flex-col gap-1">
+                <a href="index.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-users w-6"></i> MEMBERSHIP DIRECTORY
+                </a>
+                <a href="transactions.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-receipt w-6"></i> TRANSACTIONS
+                </a>
+                <a href="inventory.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-boxes w-6"></i> INVENTORY
+                </a>
+                <a href="pos.php" class="flex items-center px-6 py-3 bg-primary text-white font-semibold border-l-4 border-primaryDark">
+                    <i class="fas fa-shopping-cart w-6"></i> SELL / OUTSOURCE
+                </a>
+                <a href="outsourcing_report.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-chart-line w-6"></i> OUTSOURCING LOGS
+                </a>
+                <a href="database_management.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-database w-6"></i> DATABASE SETTINGS
+                </a>
             </nav>
         </aside>
 
-        <main class="main-content">
-            <div class="top-action-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
-                <h1 class="page-title">Point of Sale & Outsourcing</h1>
+        <main class="flex-1 flex flex-col h-screen overflow-hidden relative w-full">
+            
+            <header class="bg-white shadow-sm px-4 md:px-8 py-4 flex justify-between items-center z-10">
+                <div class="flex items-center gap-4">
+                    <button class="text-gray-500 focus:outline-none md:hidden hover:text-primary" onclick="toggleSidebar()">
+                        <i class="fas fa-bars text-2xl"></i>
+                    </button>
+                    <h1 class="text-xl md:text-2xl font-bold text-gray-800 tracking-tight">Point of Sale</h1>
+                </div>
+            </header>
+
+            <div class="flex-1 overflow-hidden flex flex-col lg:flex-row">
                 
-                <div class="action-buttons" style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                <div class="flex-1 flex flex-col h-full bg-gray-50">
                     
-                    <div class="search-container">
-                        <input type="text" id="posSearch" placeholder="Search Products...">
-                        <span>SEARCH</span>
-                    </div>
-
-                    <div class="input-group" style="flex-direction: row; align-items: center; margin: 0;">
-                        <label style="margin-right: 8px; margin-bottom: 0; font-size: 13px;">Unit:</label>
-                        <select id="posUnitFilter" onchange="filterProducts()" style="padding: 8px; font-size: 13px; border-radius: 6px;">
-                            <option value="all">All Units</option>
-                            <?php foreach($unit_types as $u): ?>
-                                <option value="<?= strtolower(htmlspecialchars($u)) ?>"><?= htmlspecialchars($u) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <div class="input-group" style="flex-direction: row; align-items: center; margin: 0;">
-                        <label style="margin-right: 8px; margin-bottom: 0; font-size: 13px;">Sort:</label>
-                        <select id="posSort" onchange="sortProducts()" style="padding: 8px; font-size: 13px; border-radius: 6px;">
-                            <option value="alpha_asc">Alphabetical (A-Z)</option>
-                            <option value="alpha_desc">Alphabetical (Z-A)</option>
-                            <option value="stock_desc">Stock (High to Low)</option>
-                            <option value="stock_asc">Stock (Low to High)</option>
-                            <option value="price_desc">Price (High to Low)</option>
-                            <option value="price_asc">Price (Low to High)</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <div class="pos-layout">
-                <div class="products-area" id="products-grid">
-                    <?php
-                    // Show all products now (even if 0) since we might allow negative stock
-                    $res = $conn->query("SELECT * FROM inventory ORDER BY product_name ASC");
-                    if ($res && $res->num_rows > 0) {
-                        while($row = $res->fetch_assoc()) {
-                            
-                            $stock_color = ($row['current_quantity'] <= 0) ? "red" : "inherit";
-
-                            echo "
-                            <div class='product-card' 
-                                 data-id='{$row['product_id']}' 
-                                 data-name='" . strtolower(htmlspecialchars($row['product_name'])) . "' 
-                                 data-price='{$row['price']}' 
-                                 data-max-stock='{$row['current_quantity']}' 
-                                 data-unit='" . strtolower(htmlspecialchars($row['quantity_type'])) . "'>
-                                 
-                                <h4 style='text-transform: capitalize;'>" . htmlspecialchars($row['product_name']) . "</h4>
-                                <div style='font-size: 12px; color: #888; margin-bottom: 5px;'>" . htmlspecialchars($row['product_type']) . "</div>
-                                <p>₱" . number_format($row['price'], 2) . "</p>
-                                <div style='font-size: 12px; margin-bottom: 10px; font-weight: bold;'>
-                                    Stock: <span id='stock-count-{$row['product_id']}' style='color: {$stock_color};'>{$row['current_quantity']}</span> {$row['quantity_type']}s
-                                </div>
-                                <button type='button' class='btn btn-secondary' style='width: 100%; border-color: #6a1b9a; color: #6a1b9a;' 
-                                    onclick='addToCart({$row['product_id']}, \"" . addslashes($row['product_name']) . "\", {$row['price']}, {$row['current_quantity']})'>
-                                    + ADD TO CART
-                                </button>
-                            </div>";
-                        }
-                    } else {
-                        echo "<p style='grid-column: span 3; color: #888;'>No products available.</p>";
-                    }
-                    ?>
-                </div>
-
-                <div class="cart-area">
-                    <h3 style="margin-bottom: 20px; border-bottom: 2px solid #6a1b9a; padding-bottom: 10px; color: #6a1b9a;">Current Cart</h3>
-                    
-                    <div id="cart-container">
-                        <p style="color: #888; text-align: center; font-size: 14px;">Cart is empty</p>
-                    </div>
-
-                    <div class="cart-total">Total: ₱<span id="cart-total-price">0.00</span></div>
-
-                    <form action="pos.php" method="POST" id="checkoutForm">
-                        <input type="hidden" name="checkout" value="1">
-                        <input type="hidden" name="cart_data" id="cart_data">
+                    <div class="p-4 md:p-6 bg-white border-b border-gray-200 shadow-sm flex flex-col sm:flex-row gap-4 items-center z-10 relative">
+                        <div class="flex w-full sm:w-1/2 bg-gray-100 border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-all">
+                            <div class="px-3 py-2 text-gray-400 flex items-center justify-center"><i class="fas fa-search"></i></div>
+                            <input type="text" id="posSearch" placeholder="Search Products..." class="w-full py-2 pr-4 outline-none text-sm text-gray-700 bg-transparent">
+                        </div>
                         
-                        <div class="input-group" style="margin-bottom: 15px;">
-                            <label>Payment Method</label>
-                            <select name="payment_method" id="payment_method" required style="font-weight: bold; border-color: #2e7d32; padding: 12px; border-radius: 6px; width: 100%;">
-                                <option value="Cash">Cash Payment</option>
-                                <option value="GCash">GCash Transfer</option>
-                                <option value="Pay Later">Pay Later</option>
+                        <div class="flex gap-2 w-full sm:w-auto">
+                            <select id="posUnitFilter" onchange="filterProducts()" class="flex-1 sm:flex-none rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white">
+                                <option value="all">All Units</option>
+                                <?php foreach($unit_types as $u): ?>
+                                    <option value="<?= strtolower(htmlspecialchars($u)) ?>"><?= htmlspecialchars($u) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            
+                            <select id="posSort" onchange="sortProducts()" class="flex-1 sm:flex-none rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white">
+                                <option value="alpha_asc">A-Z</option>
+                                <option value="stock_desc">Highest Stock</option>
+                                <option value="price_desc">Highest Price</option>
                             </select>
                         </div>
+                    </div>
 
-                        <div class="input-group" id="receipt_group" style="margin-bottom: 15px;">
-                            <label id="receipt_label" style="color: #d32f2f; font-weight: bold;">Reference No. or Invoice *</label>
-                            <input type="text" name="receipt_no" id="receipt_no" placeholder="Enter number here..." required style="padding: 10px; border-radius: 6px; width: 100%; border: 1px solid #ccc; font-weight: bold;">
+                    <div class="flex-1 overflow-y-auto p-4 md:p-6 relative">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4" id="products-grid">
+                            <?php
+                            $res = $conn->query("SELECT * FROM inventory ORDER BY product_name ASC");
+                            if ($res && $res->num_rows > 0) {
+                                while($row = $res->fetch_assoc()) {
+                                    
+                                    $stock_color = ($row['current_quantity'] <= 0) ? "text-red-600 font-bold" : "text-green-600 font-bold";
+                                    $bg_shade = ($row['current_quantity'] <= 0) ? "bg-red-50" : "bg-white";
+
+                                    echo "
+                                    <div class='product-card {$bg_shade} rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col hover:shadow-md transition-shadow relative overflow-hidden group' 
+                                         data-id='{$row['product_id']}' 
+                                         data-name='" . strtolower(htmlspecialchars($row['product_name'])) . "' 
+                                         data-price='{$row['price']}' 
+                                         data-max-stock='{$row['current_quantity']}' 
+                                         data-unit='" . strtolower(htmlspecialchars($row['quantity_type'])) . "'>
+                                         
+                                        <div class='flex-1 mb-3'>
+                                            <h4 class='text-sm font-bold text-gray-800 capitalize leading-tight mb-1 group-hover:text-primary transition-colors'>" . htmlspecialchars($row['product_name']) . "</h4>
+                                            <div class='text-xs text-gray-500 uppercase tracking-wider'>" . htmlspecialchars($row['product_type']) . "</div>
+                                        </div>
+                                        
+                                        <div class='text-lg font-extrabold text-gray-900 mb-2'>₱" . number_format($row['price'], 2) . "</div>
+                                        
+                                        <div class='text-xs text-gray-600 mb-4 bg-gray-100 rounded px-2 py-1 inline-block w-max'>
+                                            Stock: <span id='stock-count-{$row['product_id']}' class='{$stock_color}'>{$row['current_quantity']}</span> {$row['quantity_type']}s
+                                        </div>
+                                        
+                                        <button type='button' class='mt-auto w-full bg-white border-2 border-primary text-primary hover:bg-primary hover:text-white font-semibold py-2 rounded-lg text-sm transition-colors' 
+                                            onclick='addToCart({$row['product_id']}, \"" . addslashes($row['product_name']) . "\", {$row['price']}, {$row['current_quantity']})'>
+                                            <i class='fas fa-cart-plus mr-1'></i> ADD
+                                        </button>
+                                    </div>";
+                                }
+                            } else {
+                                echo "<p class='col-span-full text-center text-gray-400 py-10'>No products available in inventory.</p>";
+                            }
+                            ?>
                         </div>
-
-                        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                            <div class="input-group" style="flex: 1;">
-                                <label id="name_label">Buyer Name <span id="name_asterisk" style="display:none; color: #d32f2f;">*</span></label>
-                                <input type="text" name="buyer_name" id="buyer_name" placeholder="Optional" style="padding: 10px; border-radius: 6px; width: 100%; border: 1px solid #ccc;">
-                            </div>
-                            <div class="input-group" style="flex: 1;">
-                                <label id="contact_label">Contact <span id="contact_asterisk" style="display:none; color: #d32f2f;">*</span></label>
-                                <input type="text" name="buyer_contact" id="buyer_contact" placeholder="Optional" style="padding: 10px; border-radius: 6px; width: 100%; border: 1px solid #ccc;">
-                            </div>
-                        </div>
-
-                        <button type="button" class="btn btn-primary" style="width: 100%; background-color: #2e7d32; font-size: 16px; padding: 15px;" onclick="processCheckout()">CONFIRM CHECKOUT</button>
-                    </form>
+                    </div>
                 </div>
+
+                <div class="w-full lg:w-96 bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col shadow-2xl lg:shadow-none z-20 h-auto lg:h-full max-h-[50vh] lg:max-h-full">
+                    
+                    <div class="p-4 bg-gray-50 border-b border-gray-200">
+                        <h3 class="font-bold text-gray-800 text-lg"><i class="fas fa-shopping-basket text-primary mr-2"></i>Checkout Cart</h3>
+                    </div>
+
+                    <div id="cart-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-gray-50">
+                        <p class="text-gray-400 text-center text-sm py-10 flex flex-col items-center justify-center">
+                            <i class="fas fa-shopping-cart text-4xl mb-3 opacity-20"></i>
+                            Cart is empty
+                        </p>
+                    </div>
+
+                    <div class="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                        
+                        <div class="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">
+                            <span class="text-gray-600 font-semibold uppercase text-sm tracking-wider">Total</span>
+                            <span class="text-3xl font-black text-green-600 tracking-tight">₱<span id="cart-total-price">0.00</span></span>
+                        </div>
+
+                        <form action="pos.php" method="POST" id="checkoutForm" class="flex flex-col gap-3">
+                            <input type="hidden" name="checkout" value="1">
+                            <input type="hidden" name="cart_data" id="cart_data">
+                            
+                            <div>
+                                <select name="payment_method" id="payment_method" required class="w-full font-bold text-gray-800 border-2 border-gray-300 px-4 py-3 rounded-lg focus:outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600 transition-colors bg-white">
+                                    <option value="Cash">Cash Payment</option>
+                                    <option value="GCash">GCash Transfer</option>
+                                    <option value="Pay Later">Pay Later</option>
+                                </select>
+                            </div>
+
+                            <div id="receipt_group">
+                                <input type="text" name="receipt_no" id="receipt_no" placeholder="Reference No. or Invoice *" required class="w-full font-bold text-gray-800 border border-gray-300 px-4 py-3 rounded-lg focus:outline-none focus:border-primary placeholder-gray-400">
+                            </div>
+
+                            <div id="pay_later_group" class="hidden flex gap-2">
+                                <input type="text" name="buyer_name" id="buyer_name" placeholder="Buyer Name *" class="w-1/2 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-red-500">
+                                <input type="text" name="buyer_contact" id="buyer_contact" placeholder="Contact *" class="w-1/2 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-red-500">
+                            </div>
+
+                            <button type="button" class="w-full bg-green-600 hover:bg-green-700 text-white font-black py-4 rounded-lg shadow-lg transition-transform transform hover:-translate-y-0.5 mt-2 flex items-center justify-center gap-2 text-lg" onclick="processCheckout()">
+                                <i class="fas fa-check-circle"></i> CONFIRM CHECKOUT
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
             </div>
         </main>
     </div>
 
     <script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('mobile-overlay');
+            sidebar.classList.toggle('-translate-x-full');
+            overlay.classList.toggle('hidden');
+        }
+
         let cart = {};
-        // Inject PHP setting into JS
         const allowNegativeStock = <?= $allow_negative ?> === 1;
 
-        // --- PAYMENT UI LOGIC ---
+        // Payment UI Logic
         document.getElementById('payment_method').addEventListener('change', function() {
-            const label = document.getElementById('receipt_label');
-            const inputGroup = document.getElementById('receipt_group');
-            const inputField = document.getElementById('receipt_no');
+            const receiptGroup = document.getElementById('receipt_group');
+            const receiptField = document.getElementById('receipt_no');
             
+            const payLaterGroup = document.getElementById('pay_later_group');
             const buyerName = document.getElementById('buyer_name');
             const buyerContact = document.getElementById('buyer_contact');
-            const nameAsterisk = document.getElementById('name_asterisk');
-            const contactAsterisk = document.getElementById('contact_asterisk');
 
             if (this.value === 'Pay Later') {
-                inputGroup.style.display = 'none';
-                inputField.removeAttribute('required');
-                inputField.value = 'PENDING';
+                receiptGroup.style.display = 'none';
+                receiptField.removeAttribute('required');
+                receiptField.value = 'PENDING';
                 
+                payLaterGroup.classList.remove('hidden');
                 buyerName.setAttribute('required', 'required');
                 buyerContact.setAttribute('required', 'required');
-                buyerName.placeholder = "Required for Pay Later";
-                buyerContact.placeholder = "Required for Pay Later";
-                nameAsterisk.style.display = 'inline';
-                contactAsterisk.style.display = 'inline';
-            } else {
-                inputGroup.style.display = 'flex';
-                inputField.setAttribute('required', 'required');
-                if (inputField.value === 'PENDING') inputField.value = '';
                 
-                label.innerText = (this.value === 'GCash') ? 'Reference No. *' : 'Receipt No. or Invoice *';
+                this.classList.add('border-red-500', 'text-red-700');
+                this.classList.remove('border-gray-300', 'text-gray-800');
+            } else {
+                receiptGroup.style.display = 'block';
+                receiptField.setAttribute('required', 'required');
+                if (receiptField.value === 'PENDING') receiptField.value = '';
+                receiptField.placeholder = (this.value === 'GCash') ? 'GCash Ref No. *' : 'Receipt No. / Invoice *';
 
+                payLaterGroup.classList.add('hidden');
                 buyerName.removeAttribute('required');
                 buyerContact.removeAttribute('required');
-                buyerName.placeholder = "Optional";
-                buyerContact.placeholder = "Optional";
-                nameAsterisk.style.display = 'none';
-                contactAsterisk.style.display = 'none';
+                
+                this.classList.remove('border-red-500', 'text-red-700');
+                this.classList.add('border-gray-300', 'text-gray-800');
             }
         });
 
-        // --- REALTIME SEARCH & FILTERING ---
+        // Search & Filtering
         function filterProducts() {
             let searchFilter = document.getElementById('posSearch').value.toLowerCase();
             let unitFilter = document.getElementById('posUnitFilter').value;
@@ -252,7 +295,7 @@ if ($res_units) {
         }
         document.getElementById('posSearch').addEventListener('keyup', filterProducts);
 
-        // --- REALTIME SORTING ---
+        // Sorting
         function sortProducts() {
             let container = document.getElementById('products-grid');
             let cards = Array.from(container.getElementsByClassName('product-card'));
@@ -271,7 +314,7 @@ if ($res_units) {
             cards.forEach(card => container.appendChild(card));
         }
 
-        // --- CART LOGIC ---
+        // Cart Logic
         function addToCart(id, name, price, maxQty) {
             if (cart[id]) {
                 if (allowNegativeStock || cart[id].qty < maxQty) {
@@ -316,20 +359,29 @@ if ($res_units) {
                 total += itemTotal;
 
                 container.innerHTML += `
-                    <div class="cart-item">
-                        <div class="cart-item-info">
-                            <div class="cart-item-title">${item.name}</div>
-                            <div class="cart-item-price">₱${item.price.toFixed(2)} each</div>
+                    <div class="bg-white border border-gray-200 rounded-lg p-3 flex justify-between items-center shadow-sm">
+                        <div class="flex-1 pr-2">
+                            <div class="font-bold text-sm text-gray-800 leading-tight mb-1">${item.name}</div>
+                            <div class="text-xs text-primary font-semibold">₱${item.price.toFixed(2)}</div>
                         </div>
-                        <div class="cart-controls">
-                            <input type="number" value="${item.qty}" min="0" onchange="updateQty(${id}, this.value)">
-                            <div style="font-weight: bold; width: 60px; text-align: right;">₱${itemTotal.toFixed(2)}</div>
+                        <div class="flex flex-col items-end gap-2">
+                            <div class="flex items-center border border-gray-300 rounded overflow-hidden h-8">
+                                <button onclick="updateQty(${id}, ${item.qty - 1})" class="px-2 bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors h-full"><i class="fas fa-minus text-xs"></i></button>
+                                <input type="number" value="${item.qty}" min="0" class="w-10 text-center text-sm font-bold outline-none h-full" onchange="updateQty(${id}, this.value)">
+                                <button onclick="updateQty(${id}, ${item.qty + 1})" class="px-2 bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors h-full"><i class="fas fa-plus text-xs"></i></button>
+                            </div>
+                            <div class="font-black text-gray-800">₱${itemTotal.toFixed(2)}</div>
                         </div>
                     </div>
                 `;
             }
 
-            if(!hasItems) container.innerHTML = '<p style="color: #888; text-align: center; font-size: 14px;">Cart is empty</p>';
+            if(!hasItems) container.innerHTML = `
+                <p class="text-gray-400 text-center text-sm py-10 flex flex-col items-center justify-center">
+                    <i class="fas fa-shopping-cart text-4xl mb-3 opacity-20"></i>
+                    Cart is empty
+                </p>`;
+            
             totalEl.innerText = total.toFixed(2);
             updateStockDisplay();
         }
@@ -344,7 +396,7 @@ if ($res_units) {
                 let stockSpan = document.getElementById('stock-count-' + id);
                 if (stockSpan) {
                     stockSpan.innerText = currentStock;
-                    stockSpan.style.color = (currentStock <= 0) ? "red" : "inherit";
+                    stockSpan.className = (currentStock <= 0) ? "text-red-600 font-bold" : "text-green-600 font-bold";
                 }
             });
         }

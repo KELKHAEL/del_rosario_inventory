@@ -5,137 +5,161 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Member Directory - Coop DBMS</title>
-    <link rel="stylesheet" href="css/styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-        /* Modern Search Bar Styles */
-        .search-container {
-            display: flex;
-            align-items: center;
-            background: #fff;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            padding: 4px;
-            width: 300px;
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], },
+                    colors: {
+                        primary: '#6a1b9a',
+                        primaryDark: '#570591',
+                    }
+                }
+            }
         }
-        .search-container input {
-            border: none;
-            outline: none;
-            padding: 8px 10px;
-            width: 100%;
-            font-size: 13px;
-        }
-        .search-container span {
-            background: #6a1b9a;
-            color: white;
-            border-radius: 4px;
-            padding: 8px 15px;
-            font-weight: bold;
-            font-size: 12px;
-        }
-    </style>
+    </script>
 </head>
-<body>
+<body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
+    
+    <div class="flex h-screen w-full">
 
-    <div class="dashboard-container">
-        <aside class="sidebar">
-            <div class="logo-container">
-                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo">
+        <div id="mobile-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-40 hidden md:hidden transition-opacity" onclick="toggleSidebar()"></div>
+
+        <aside id="sidebar" class="bg-white w-72 border-r border-gray-200 flex flex-col transition-transform transform -translate-x-full md:translate-x-0 fixed md:relative z-50 h-full shadow-lg md:shadow-none">
+            <div class="p-6 flex items-center justify-center border-b border-gray-100 relative">
+                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="h-16 w-auto">
+                <button class="absolute top-4 right-4 md:hidden text-gray-400 hover:text-gray-800" onclick="toggleSidebar()">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
             </div>
             
-            <nav class="sidebar-menu">
-                <a href="index.php" class="menu-btn active">MEMBERSHIP DIRECTORY</a>
-                <a href="transactions.php" class="menu-btn">TRANSACTIONS</a>
-                <a href="inventory.php" class="menu-btn">INVENTORY MANAGEMENT</a>
-                <a href="pos.php" class="menu-btn">SELL / OUTSOURCE (CART)</a>
-                <a href="outsourcing_report.php" class="menu-btn">OUTSOURCING LOGS</a>
-                <a href="database_management.php" class="menu-btn">DATABASE MANAGEMENT</a>
+            <nav class="flex-1 overflow-y-auto py-4 flex flex-col gap-1">
+                <a href="index.php" class="flex items-center px-6 py-3 bg-primary text-white font-semibold border-l-4 border-primaryDark">
+                    <i class="fas fa-users w-6"></i> MEMBERSHIP DIRECTORY
+                </a>
+                <a href="transactions.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-receipt w-6"></i> TRANSACTIONS
+                </a>
+                <a href="inventory.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-boxes w-6"></i> INVENTORY
+                </a>
+                <a href="pos.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-shopping-cart w-6"></i> SELL / OUTSOURCE
+                </a>
+                <a href="outsourcing_report.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-chart-line w-6"></i> OUTSOURCING LOGS
+                </a>
+                <a href="database_management.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-database w-6"></i> DATABASE SETTINGS
+                </a>
             </nav>
         </aside>
 
-        <main class="main-content">
-            <div class="top-action-bar">
-                <h1 class="page-title">Membership Management</h1>
+        <main class="flex-1 flex flex-col h-screen overflow-hidden relative w-full">
+            
+            <header class="bg-white shadow-sm px-4 md:px-8 py-4 flex justify-between items-center z-10">
+                <div class="flex items-center gap-4">
+                    <button class="text-gray-500 focus:outline-none md:hidden hover:text-primary" onclick="toggleSidebar()">
+                        <i class="fas fa-bars text-2xl"></i>
+                    </button>
+                    <h1 class="text-xl md:text-2xl font-bold text-gray-800 tracking-tight">Membership Management</h1>
+                </div>
+            </header>
+
+            <div class="flex-1 overflow-y-auto p-4 md:p-8">
                 
-                <div class="action-buttons">
+                <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 gap-4">
                     
-                    <div class="search-container">
-                        <input type="text" id="liveSearch" placeholder="Search Name, ID, Occupation...">
-                        <span>SEARCH</span>
+                    <div class="flex w-full xl:w-1/3 bg-white border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-all shadow-sm">
+                        <div class="px-3 py-2 text-gray-400 flex items-center justify-center"><i class="fas fa-search"></i></div>
+                        <input type="text" id="liveSearch" placeholder="Search Name, ID, Occupation..." class="w-full py-2 pr-4 outline-none text-sm text-gray-700 bg-transparent">
                     </div>
 
-                    <form action="import_excel.php" method="POST" enctype="multipart/form-data" class="upload-form" style="display: flex; gap: 10px; align-items: center; margin-left: 15px;">
-                        <input type="file" name="excel_file" accept=".xls,.xlsx" required>
-                        <button type="submit" class="btn btn-primary" style="white-space: nowrap;">UPLOAD EXCEL</button>
-                    </form>
-                    
-                    <a href="export_excel.php" class="btn btn-primary" style="text-decoration: none; background-color: #107c41; border: none; margin-left: 10px; white-space: nowrap;">EXPORT EXCEL</a>
-                    
-                    <a href="membership.php" class="btn btn-primary" style="text-decoration: none; margin-left: 10px; white-space: nowrap;">+ ADD NEW MEMBER</a>
+                    <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto">
+                        
+                        <form action="import_excel.php" method="POST" enctype="multipart/form-data" class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm items-center">
+                            <input type="file" name="excel_file" accept=".xls,.xlsx" required class="block w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:font-semibold file:bg-purple-50 file:text-primary hover:file:bg-purple-100 transition cursor-pointer">
+                            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto whitespace-nowrap"><i class="fas fa-upload mr-1"></i> UPLOAD</button>
+                        </form>
+                        
+                        <a href="export_excel.php" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto text-center whitespace-nowrap"><i class="fas fa-file-excel mr-2"></i>EXPORT</a>
+                        
+                        <a href="membership.php" class="bg-primary hover:bg-primaryDark text-white font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto text-center whitespace-nowrap"><i class="fas fa-user-plus mr-2"></i>ADD NEW</a>
+                    </div>
                 </div>
-            </div>
 
-            <div class="content-display">
-                <div class="data-table-container">
-                    <table class="data-table" id="membersTable">
-                        <thead>
-                            <tr>
-                                <th>Form ID</th>
-                                <th>Member Name</th>
-                                <th>Sex</th>
-                                <th>Occupation</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php
-                            // Fetch ALL members (Filtering is now handled by JavaScript instantly)
-                            $sql = "SELECT * FROM members ORDER BY member_id DESC";
-                            $result = $conn->query($sql);
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-gray-600 whitespace-nowrap" id="membersTable">
+                            <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
+                                <tr>
+                                    <th scope="col" class="px-6 py-4 font-bold tracking-wider">Form ID</th>
+                                    <th scope="col" class="px-6 py-4 font-bold tracking-wider">Member Name</th>
+                                    <th scope="col" class="px-6 py-4 font-bold tracking-wider">Sex</th>
+                                    <th scope="col" class="px-6 py-4 font-bold tracking-wider">Occupation</th>
+                                    <th scope="col" class="px-6 py-4 font-bold tracking-wider text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <?php
+                                $sql = "SELECT * FROM members ORDER BY member_id DESC";
+                                $result = $conn->query($sql);
 
-                            if ($result && $result->num_rows > 0) {
-                                while($row = $result->fetch_assoc()) {
-                                    
-                                    // Display the actual form_id from the database. 
-                                    // If it's NULL or empty, it stays blank.
-                                    $display_id = !empty($row['form_id']) ? htmlspecialchars($row['form_id']) : '';
-                                    
-                                    // Construct the full name (Last Name, First Name format)
-                                    $full_name = htmlspecialchars($row['last_name'] . ", " . $row['first_name'] . " " . $row['middle_name']);
-                                    $full_name = trim(str_replace('  ', ' ', $full_name));
+                                if ($result && $result->num_rows > 0) {
+                                    while($row = $result->fetch_assoc()) {
+                                        
+                                        $display_id = !empty($row['form_id']) ? htmlspecialchars($row['form_id']) : '-';
+                                        
+                                        $full_name = htmlspecialchars($row['last_name'] . ", " . $row['first_name'] . " " . $row['middle_name']);
+                                        $full_name = trim(str_replace('  ', ' ', $full_name));
 
-                                    echo "<tr class='member-row'>
-                                            <td><strong>{$display_id}</strong></td>
-                                            <td style='text-transform: capitalize;'>{$full_name}</td>
-                                            <td>" . htmlspecialchars($row['sex'] ?? 'N/A') . "</td>
-                                            <td>" . htmlspecialchars($row['occupation'] ?? 'N/A') . "</td>
-                                            <td style='display: flex; gap: 8px;'>
-                                                <a href='view_member.php?id={$row['member_id']}' class='btn btn-secondary' style='padding: 5px 10px; font-size: 12px; text-decoration: none;'>VIEW</a>
-                                                <button class='btn btn-secondary' style='padding: 5px 10px; font-size: 12px;'>EDIT</button>
-                                            </td>
-                                          </tr>";
+                                        echo "<tr class='member-row hover:bg-purple-50 transition-colors'>
+                                                <td class='px-6 py-3.5 font-semibold text-gray-900'>{$display_id}</td>
+                                                <td class='px-6 py-3.5 capitalize font-medium text-gray-800'>{$full_name}</td>
+                                                <td class='px-6 py-3.5'>" . htmlspecialchars($row['sex'] ?? 'N/A') . "</td>
+                                                <td class='px-6 py-3.5'>" . htmlspecialchars($row['occupation'] ?? 'N/A') . "</td>
+                                                <td class='px-6 py-3.5 flex justify-center gap-2'>
+                                                    <a href='view_member.php?id={$row['member_id']}' class='bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 font-medium py-1 px-3 rounded shadow-sm text-xs transition-colors'><i class='fas fa-eye mr-1 text-primary'></i> VIEW</a>
+                                                    <button class='bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 font-medium py-1 px-3 rounded shadow-sm text-xs transition-colors'><i class='fas fa-edit mr-1 text-blue-600'></i> EDIT</button>
+                                                </td>
+                                              </tr>";
+                                    }
+                                } else {
+                                    echo "<tr id='noDataRow'><td colspan='5' class='px-6 py-12 text-center text-gray-500'>No members found. Click 'Add New Member' or Upload an Excel file to start.</td></tr>";
                                 }
-                            } else {
-                                echo "<tr id='noDataRow'><td colspan='5' style='text-align:center; padding: 60px; color:#888;'>No members found. Click '+ Add New Member' or Upload an Excel file to start.</td></tr>";
-                            }
-                            ?>
-                        </tbody>
-                    </table>
+                                ?>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
+
             </div>
         </main>
     </div>
 
     <script>
+        // Sidebar Toggle Logic for Mobile Phones
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('mobile-overlay');
+            
+            sidebar.classList.toggle('-translate-x-full');
+            overlay.classList.toggle('hidden');
+        }
+
+        // Live Search Logic (Instant Filtering)
         document.getElementById('liveSearch').addEventListener('keyup', function() {
             let filter = this.value.toLowerCase();
             let rows = document.querySelectorAll('.member-row');
 
             rows.forEach(row => {
-                // Grab all the text inside the row (ID, Name, Sex, Occupation)
                 let rowText = row.textContent.toLowerCase();
-                
-                // If the text contains what the user typed, show it. Otherwise, hide it.
                 if (rowText.includes(filter)) {
                     row.style.display = '';
                 } else {
@@ -144,6 +168,5 @@
             });
         });
     </script>
-
 </body>
 </html>

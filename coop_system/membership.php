@@ -29,211 +29,306 @@ $civil_statuses = fetchConfig($conn, 'config_civil_status', ['Single', 'Married'
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Membership Form - Coop DBMS</title>
-    <link rel="stylesheet" href="css/styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], },
+                    colors: { primary: '#6a1b9a', primaryDark: '#570591', }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom styling for radio cards */
+        .radio-card input:checked + div {
+            background-color: #f3e8ff; /* purple-100 */
+            border-color: #6a1b9a;
+            color: #570591;
+            font-weight: 600;
+        }
+    </style>
 </head>
-<body>
+<body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
 
-    <div class="dashboard-container">
-        <aside class="sidebar">
-            <div class="logo-container">
-                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo">
+    <div class="flex h-screen w-full">
+
+        <div id="mobile-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-40 hidden md:hidden transition-opacity" onclick="toggleSidebar()"></div>
+
+        <aside id="sidebar" class="bg-white w-72 border-r border-gray-200 flex flex-col transition-transform transform -translate-x-full md:translate-x-0 fixed md:relative z-50 h-full shadow-lg md:shadow-none">
+            <div class="p-6 flex items-center justify-center border-b border-gray-100 relative">
+                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="h-16 w-auto">
+                <button class="absolute top-4 right-4 md:hidden text-gray-400 hover:text-gray-800" onclick="toggleSidebar()">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
             </div>
             
-            <nav class="sidebar-menu">
-                <a href="index.php" class="menu-btn active">MEMBERSHIP DIRECTORY</a>
-                <a href="transactions.php" class="menu-btn">TRANSACTIONS</a>
-                <a href="inventory.php" class="menu-btn">INVENTORY MANAGEMENT</a>
-                <a href="pos.php" class="menu-btn">SELL / OUTSOURCE (CART)</a>
-                <a href="outsourcing_report.php" class="menu-btn">OUTSOURCING LOGS</a>
-                <a href="database_management.php" class="menu-btn">DATABASE MANAGEMENT</a>
+            <nav class="flex-1 overflow-y-auto py-4 flex flex-col gap-1">
+                <a href="index.php" class="flex items-center px-6 py-3 bg-primary text-white font-semibold border-l-4 border-primaryDark">
+                    <i class="fas fa-users w-6"></i> MEMBERSHIP DIRECTORY
+                </a>
+                <a href="transactions.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-receipt w-6"></i> TRANSACTIONS
+                </a>
+                <a href="inventory.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-boxes w-6"></i> INVENTORY
+                </a>
+                <a href="pos.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-shopping-cart w-6"></i> SELL / OUTSOURCE
+                </a>
+                <a href="outsourcing_report.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-chart-line w-6"></i> OUTSOURCING LOGS
+                </a>
+                <a href="database_management.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-database w-6"></i> DATABASE SETTINGS
+                </a>
             </nav>
         </aside>
 
-        <main class="main-content">
-            <div class="top-action-bar">
-                <h1 class="page-title">Create New Membership</h1>
-                <div class="action-buttons">
-                    <a href="index.php" class="btn btn-secondary">BACK TO LIST</a>
+        <main class="flex-1 flex flex-col h-screen overflow-hidden relative w-full">
+            
+            <header class="bg-white shadow-sm px-4 md:px-8 py-4 flex justify-between items-center z-10">
+                <div class="flex items-center gap-4">
+                    <button class="text-gray-500 focus:outline-none md:hidden hover:text-primary" onclick="toggleSidebar()">
+                        <i class="fas fa-bars text-2xl"></i>
+                    </button>
+                    <h1 class="text-xl md:text-2xl font-bold text-gray-800 tracking-tight">Create New Membership</h1>
                 </div>
-            </div>
+                <a href="index.php" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm hidden sm:flex items-center">
+                    <i class="fas fa-arrow-left mr-2"></i> BACK TO LIST
+                </a>
+            </header>
 
-            <form action="process_membership.php" method="POST">
-                <div class="form-section">
-                    <h4>Personal Information</h4>
-                    
-                    <div class="form-grid one-col" style="margin-bottom: 15px;">
-                        <div class="input-group">
-                            <label style="color: #6a1b9a; font-weight: 800;">Form ID (Optional)</label>
-                            <input type="text" name="form_id" placeholder="Leave blank if no form ID yet" style="border: 1px solid #6a1b9a; max-width: 300px;">
-                        </div>
-                    </div>
-
-                    <div class="form-grid">
-                        <div class="input-group">
-                            <label>Last Name (Surname)</label>
-                            <input type="text" name="last_name" pattern="[A-Za-z\s\-]+" title="Letters and spaces only" required>
-                        </div>
-                        <div class="input-group">
-                            <label>First Name (Given Name)</label>
-                            <input type="text" name="first_name" pattern="[A-Za-z\s\-]+" title="Letters and spaces only" required>
-                        </div>
-                        <div class="input-group">
-                            <label>Middle Name</label>
-                            <input type="text" name="middle_name" pattern="[A-Za-z\s\-]+" title="Letters and spaces only">
-                        </div>
-                    </div>
-
-                    <div class="form-grid">
-                        <div class="input-group">
-                            <label>Date of Birth</label>
-                            <input type="date" name="date_of_birth" required>
-                        </div>
-                        <div class="input-group">
-                            <label>Birth Place</label>
-                            <input type="text" name="birth_place" pattern="[A-Za-z\s\-]+" title="Letters and spaces only">
-                        </div>
-                        <div class="input-group">
-                            <label>Civil Status</label>
-                            <select name="civil_status">
-                                <option value="" disabled selected>Select Status</option>
-                                <?php foreach($civil_statuses as $status): ?>
-                                    <option value="<?= htmlspecialchars($status) ?>"><?= htmlspecialchars($status) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-grid">
-                        <div class="input-group">
-                            <label>Religion</label>
-                            <input type="text" name="religion" pattern="[A-Za-z\s]+" title="Letters only">
-                        </div>
-                        <div class="input-group">
-                            <label>Sex</label>
-                            <select name="sex">
-                                <option value="" disabled selected>Select Sex</option>
-                                <option value="MALE">Male</option>
-                                <option value="FEMALE">Female</option>
-                            </select>
-                        </div>
-                        <div class="input-group">
-                            <label>Tribe</label>
-                            <input type="text" name="tribe" pattern="[A-Za-z\s]+" title="Letters only">
-                        </div>
-                    </div>
-
-                    <div class="form-grid">
-                        <div class="input-group">
-                            <label>SSS/GSIS No.</label>
-                            <input type="text" name="sss_gsis_no" pattern="[\d\-]+" title="Numbers and dashes only">
-                        </div>
-                        <div class="input-group">
-                            <label>TIN No.</label>
-                            <input type="text" name="tin_no" pattern="[\d\-]+" title="Numbers and dashes only">
-                        </div>
-                        <div class="input-group">
-                            <label>Postal Code</label>
-                            <input type="text" name="postal_code" pattern="\d{4}" title="Must be exactly 4 digits" maxlength="4">
-                        </div>
-                    </div>
-
-                    <div class="form-grid one-col">
-                        <div class="input-group">
-                            <label>Address</label>
-                            <input type="text" name="address" required>
-                        </div>
-                        <div class="input-group">
-                            <label>Business/Office Address</label>
-                            <input type="text" name="business_office_address">
-                        </div>
-                    </div>
-
-                    <div class="form-grid two-col">
-                        <div class="input-group">
-                            <label>Educational Attainment</label>
-                            <input type="text" name="educational_attainment" pattern="[A-Za-z\s\.\-]+" title="Letters and basic punctuation only">
-                        </div>
-                        <div class="input-group">
-                            <label>Present Employment / Business Activities</label>
-                            <input type="text" name="present_employment_business" pattern="[A-Za-z\s\.\-]+" title="Letters and basic punctuation only">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="form-section">
-                    <h4>Beneficiaries (Optional - Max 20)</h4>
-                    <table class="ben-table" id="beneficiaryTable">
-                        <thead>
-                            <tr>
-                                <th>Last Name</th>
-                                <th>First Name</th>
-                                <th>Middle Name</th>
-                                <th>Date of Birth</th>
-                                <th>Relationship</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="ben-tbody">
-                        </tbody>
-                    </table>
-                    <button type="button" class="btn" id="addBenBtn" style="margin-top: 10px;">+ Add Beneficiary</button>
-                </div>
-
-                <div class="form-section">
-                    <div class="form-grid two-col">
-                        <div class="input-group">
-                            <h4>Occupation</h4>
-                            <div class="radio-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; border: 1px solid #ccc; padding: 15px; border-radius: 4px;">
-                                <?php foreach($occupations as $occ): ?>
-                                    <label class="radio-item"><input type="radio" name="occupation" value="<?= htmlspecialchars($occ) ?>"> <?= htmlspecialchars($occ) ?></label>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-
-                        <div class="input-group">
-                            <h4>Monthly Income</h4>
-                            <div class="radio-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; border: 1px solid #ccc; padding: 15px; border-radius: 4px;">
-                                <?php foreach($incomes as $inc): ?>
-                                    <label class="radio-item"><input type="radio" name="monthly_income" value="<?= htmlspecialchars($inc) ?>"> <?= htmlspecialchars($inc) ?></label>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <hr style="margin: 30px 0; border: 1px solid #ddd;">
+            <div class="flex-1 overflow-y-auto p-4 md:p-8">
                 
-                <div style="text-align: right;">
-                    <button type="submit" class="btn btn-primary" style="padding: 15px 40px; font-size: 16px;">SAVE MEMBERSHIP RECORD</button>
-                </div>
-            </form>
+                <form action="process_membership.php" method="POST" class="max-w-6xl mx-auto pb-12">
+                    
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8 mb-6">
+                        <h4 class="text-lg font-bold text-primary border-b border-gray-100 pb-3 mb-6"><i class="fas fa-user-circle mr-2"></i>Personal Information</h4>
+                        
+                        <div class="mb-6 w-full md:w-1/3">
+                            <label class="block text-sm font-bold text-primary mb-1">Form ID (Optional)</label>
+                            <input type="text" name="form_id" placeholder="Leave blank if no form ID yet" class="w-full rounded-md border border-purple-300 bg-purple-50 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all placeholder-purple-300">
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Last Name (Surname) <span class="text-red-500">*</span></label>
+                                <input type="text" name="last_name" pattern="[A-Za-z\s\-]+" title="Letters and spaces only" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">First Name <span class="text-red-500">*</span></label>
+                                <input type="text" name="first_name" pattern="[A-Za-z\s\-]+" title="Letters and spaces only" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
+                                <input type="text" name="middle_name" pattern="[A-Za-z\s\-]+" title="Letters and spaces only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Date of Birth <span class="text-red-500">*</span></label>
+                                <input type="date" name="date_of_birth" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Birth Place</label>
+                                <input type="text" name="birth_place" pattern="[A-Za-z\s\-]+" title="Letters and spaces only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Civil Status</label>
+                                <select name="civil_status" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all bg-white">
+                                    <option value="" disabled selected>Select Status</option>
+                                    <?php foreach($civil_statuses as $status): ?>
+                                        <option value="<?= htmlspecialchars($status) ?>"><?= htmlspecialchars($status) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Religion</label>
+                                <input type="text" name="religion" pattern="[A-Za-z\s]+" title="Letters only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Sex</label>
+                                <select name="sex" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all bg-white">
+                                    <option value="" disabled selected>Select Sex</option>
+                                    <option value="MALE">Male</option>
+                                    <option value="FEMALE">Female</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Tribe</label>
+                                <input type="text" name="tribe" pattern="[A-Za-z\s]+" title="Letters only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">SSS / GSIS No.</label>
+                                <input type="text" name="sss_gsis_no" pattern="[\d\-]+" title="Numbers and dashes only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">TIN No.</label>
+                                <input type="text" name="tin_no" pattern="[\d\-]+" title="Numbers and dashes only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                            </div>
+
+                            <div class="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-4 gap-6">
+                                <div class="md:col-span-1">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
+                                    <input type="text" name="postal_code" pattern="\d{4}" title="Must be exactly 4 digits" maxlength="4" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                </div>
+                                <div class="md:col-span-3">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Home Address <span class="text-red-500">*</span></label>
+                                    <input type="text" name="address" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                </div>
+                            </div>
+
+                            <div class="md:col-span-2 lg:col-span-3">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Business / Office Address</label>
+                                <input type="text" name="business_office_address" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                            </div>
+
+                            <div class="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Educational Attainment</label>
+                                    <input type="text" name="educational_attainment" pattern="[A-Za-z\s\.\-]+" title="Letters and basic punctuation only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Present Employment / Business</label>
+                                    <input type="text" name="present_employment_business" pattern="[A-Za-z\s\.\-]+" title="Letters and basic punctuation only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8 mb-6">
+                        <div class="flex justify-between items-center border-b border-gray-100 pb-3 mb-6">
+                            <h4 class="text-lg font-bold text-primary"><i class="fas fa-users-cog mr-2"></i>Beneficiaries <span class="text-sm font-normal text-gray-400 ml-2">(Max 20)</span></h4>
+                            <button type="button" id="addBenBtn" class="bg-purple-100 text-primary hover:bg-purple-200 font-semibold py-1.5 px-3 rounded-md text-sm transition-colors shadow-sm"><i class="fas fa-plus mr-1"></i> Add</button>
+                        </div>
+                        
+                        <div class="overflow-x-auto rounded-lg border border-gray-200">
+                            <table class="w-full text-sm text-left text-gray-600 whitespace-nowrap" id="beneficiaryTable">
+                                <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        <th class="px-4 py-3 font-semibold">Last Name</th>
+                                        <th class="px-4 py-3 font-semibold">First Name</th>
+                                        <th class="px-4 py-3 font-semibold">Middle Name</th>
+                                        <th class="px-4 py-3 font-semibold">Date of Birth</th>
+                                        <th class="px-4 py-3 font-semibold">Relationship</th>
+                                        <th class="px-4 py-3 font-semibold text-center w-10">Remove</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ben-tbody" class="divide-y divide-gray-100">
+                                    </tbody>
+                            </table>
+                            <div id="emptyBenState" class="p-6 text-center text-gray-400 text-sm">No beneficiaries added yet.</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8 mb-6">
+                        <h4 class="text-lg font-bold text-primary border-b border-gray-100 pb-3 mb-6"><i class="fas fa-briefcase mr-2"></i>Occupation & Income</h4>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-3">Occupation Status</label>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <?php foreach($occupations as $occ): ?>
+                                        <label class="radio-card cursor-pointer relative">
+                                            <input type="radio" name="occupation" value="<?= htmlspecialchars($occ) ?>" class="peer sr-only">
+                                            <div class="rounded-md border border-gray-200 px-4 py-3 text-sm text-gray-600 hover:bg-gray-50 transition-all text-center">
+                                                <?= htmlspecialchars($occ) ?>
+                                            </div>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-3">Estimated Monthly Income</label>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <?php foreach($incomes as $inc): ?>
+                                        <label class="radio-card cursor-pointer relative">
+                                            <input type="radio" name="monthly_income" value="<?= htmlspecialchars($inc) ?>" class="peer sr-only">
+                                            <div class="rounded-md border border-gray-200 px-3 py-3 text-sm text-gray-600 hover:bg-gray-50 transition-all text-center">
+                                                <?= htmlspecialchars($inc) ?>
+                                            </div>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end mt-8">
+                        <button type="submit" class="bg-primary hover:bg-primaryDark text-white font-bold py-3 px-8 rounded-lg shadow-md transition-transform transform hover:-translate-y-0.5 text-lg w-full md:w-auto">
+                            <i class="fas fa-save mr-2"></i> SAVE MEMBERSHIP RECORD
+                        </button>
+                    </div>
+
+                </form>
+            </div>
         </main>
     </div>
 
-<script>
-    const addBtn = document.getElementById('addBenBtn');
-    const tbody = document.getElementById('ben-tbody');
-    let rowCount = 0;
-
-    addBtn.addEventListener('click', function() {
-        if(rowCount >= 20) {
-            alert("Maximum of 20 beneficiaries allowed.");
-            return;
+    <script>
+        // Sidebar Toggle for Mobile
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('mobile-overlay');
+            sidebar.classList.toggle('-translate-x-full');
+            overlay.classList.toggle('hidden');
         }
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td><input type="text" name="ben_last_name[]" placeholder="Last Name" required></td>
-            <td><input type="text" name="ben_first_name[]" placeholder="First Name" required></td>
-            <td><input type="text" name="ben_middle_name[]" placeholder="M.I."></td>
-            <td><input type="date" name="ben_dob[]"></td>
-            <td><input type="text" name="ben_rel[]" placeholder="e.g. Spouse" required></td>
-            <td><button type="button" class="btn-remove-row" title="Remove" onclick="this.closest('tr').remove(); rowCount--;">&#10005;</button></td>
-        `;
-        tbody.appendChild(tr);
-        rowCount++;
-    });
-</script>
 
+        // Beneficiary Table Logic
+        const addBtn = document.getElementById('addBenBtn');
+        const tbody = document.getElementById('ben-tbody');
+        const emptyState = document.getElementById('emptyBenState');
+        let rowCount = 0;
+
+        addBtn.addEventListener('click', function() {
+            if(rowCount >= 20) {
+                alert("Maximum of 20 beneficiaries allowed.");
+                return;
+            }
+            
+            // Hide empty state indicator if visible
+            emptyState.style.display = 'none';
+
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-gray-50 transition-colors";
+            
+            // Replaced old inputs with Tailwind-styled inputs
+            tr.innerHTML = `
+                <td class="px-4 py-2"><input type="text" name="ben_last_name[]" placeholder="Last Name" required class="w-full rounded border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none border"></td>
+                <td class="px-4 py-2"><input type="text" name="ben_first_name[]" placeholder="First Name" required class="w-full rounded border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none border"></td>
+                <td class="px-4 py-2"><input type="text" name="ben_middle_name[]" placeholder="M.I." class="w-full rounded border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none border"></td>
+                <td class="px-4 py-2"><input type="date" name="ben_dob[]" class="w-full rounded border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none border text-gray-600"></td>
+                <td class="px-4 py-2"><input type="text" name="ben_rel[]" placeholder="e.g. Spouse" required class="w-full rounded border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none border"></td>
+                <td class="px-4 py-2 text-center">
+                    <button type="button" class="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-md p-1.5 transition-colors" title="Remove" onclick="removeRow(this)">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+            rowCount++;
+        });
+
+        // Helper to remove row and show empty state if 0
+        function removeRow(btn) {
+            btn.closest('tr').remove();
+            rowCount--;
+            if (rowCount === 0) {
+                emptyState.style.display = 'block';
+            }
+        }
+    </script>
 </body>
 </html>
