@@ -83,7 +83,7 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
 
         <aside id="sidebar" class="bg-white w-72 border-r border-gray-200 flex flex-col transition-transform transform -translate-x-full md:translate-x-0 fixed md:relative z-50 h-full shadow-lg md:shadow-none print:hidden">
             <div class="p-6 flex items-center justify-center border-b border-gray-100 relative">
-                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="h-16 w-auto">
+                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="w-40 md:w-52 h-auto object-contain py-2 drop-shadow-sm transition-transform hover:scale-105">
                 <button class="absolute top-4 right-4 md:hidden text-gray-400 hover:text-gray-800" onclick="toggleSidebar()">
                     <i class="fas fa-times text-xl"></i>
                 </button>
