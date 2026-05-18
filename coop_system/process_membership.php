@@ -1,4 +1,5 @@
 <?php
+session_start(); // CRITICAL: Start the session to store our alert message
 include 'db.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
@@ -71,10 +72,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt_ben->close();
         }
 
-        echo "<script>alert('Member successfully added!'); window.location.href='index.php';</script>";
+        // CRITICAL FIX: Pass the success alert data securely via PHP Session
+        $_SESSION['alert_title'] = "Success";
+        $_SESSION['alert_message'] = "The new member was successfully added to the database.";
+        $_SESSION['alert_type'] = "success";
+        
+        header("Location: index.php");
+        exit();
+
     } else {
-        // If something fails, show the exact SQL error so you can easily spot it
-        echo "<script>alert('Error adding member: " . addslashes($conn->error) . "'); window.history.back();</script>";
+        // Pass the error alert securely via PHP Session
+        $_SESSION['alert_title'] = "Database Error";
+        $_SESSION['alert_message'] = "Error adding member: " . addslashes($conn->error);
+        $_SESSION['alert_type'] = "error";
+        
+        header("Location: index.php");
+        exit();
     }
 } else {
     // Prevent direct access to this script via URL

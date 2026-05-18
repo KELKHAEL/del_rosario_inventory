@@ -23,6 +23,22 @@
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
 
+    <div id="customAlertModal" class="fixed inset-0 z-[1000] hidden items-center justify-center p-4">
+        <div class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm transition-opacity"></div>
+        
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all z-10 flex flex-col translate-y-4 opacity-0" id="customAlertBox">
+            <div id="customAlertHeader" class="px-6 py-4 flex items-center gap-3 border-b">
+                <i id="customAlertIcon" class="fas fa-exclamation-circle text-2xl"></i>
+                <h3 id="customAlertTitle" class="text-lg font-bold tracking-tight">Alert</h3>
+            </div>
+            <div class="p-6 text-gray-600 text-sm leading-relaxed" id="customAlertMessage">
+                </div>
+            <div class="bg-gray-50 px-6 py-4 flex justify-end">
+                <button id="customAlertBtn" class="bg-primary hover:bg-primaryDark text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md">OK</button>
+            </div>
+        </div>
+    </div>
+
     <div class="flex h-screen w-full">
 
         <div id="mobile-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-40 hidden md:hidden transition-opacity print:hidden" onclick="toggleSidebar()"></div>
@@ -75,12 +91,12 @@
                     <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
                         <form action="#" method="POST" enctype="multipart/form-data" class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm items-center">
                             <input type="file" name="excel_file" accept=".xls,.xlsx" required class="block w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:font-semibold file:bg-purple-50 file:text-primary hover:file:bg-purple-100 transition cursor-pointer">
-                            <button type="submit" onclick="alert('Excel Parsing script will be connected here later!')" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto whitespace-nowrap"><i class="fas fa-upload mr-1"></i> UPLOAD</button>
+                            <button type="button" onclick="showCustomAlert('Feature Pending', 'The Excel Parsing script for transactions will be connected here in a future update.', 'info')" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto whitespace-nowrap"><i class="fas fa-upload mr-1"></i> UPLOAD</button>
                         </form>
                     </div>
 
                     <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
-                        <button onclick="alert('Add Manual Transaction Modal coming soon.')" class="bg-primary hover:bg-primaryDark text-white font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto text-center whitespace-nowrap">
+                        <button type="button" onclick="showCustomAlert('Feature in Development', 'The Add Manual Transaction modal is currently being developed and will be available soon.', 'info')" class="bg-primary hover:bg-primaryDark text-white font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto text-center whitespace-nowrap">
                             <i class="fas fa-plus mr-2"></i>ADD MANUAL
                         </button>
                         <button onclick="window.print()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto text-center border border-gray-300 whitespace-nowrap">
@@ -157,6 +173,63 @@
             sidebar.classList.toggle('-translate-x-full');
             overlay.classList.toggle('hidden');
         }
+
+        // --- CUSTOM ALERT LOGIC ---
+        let alertRedirectUrl = null;
+
+        function showCustomAlert(title, message, type = 'error', redirectUrl = null) {
+            const modal = document.getElementById('customAlertModal');
+            const box = document.getElementById('customAlertBox');
+            const titleEl = document.getElementById('customAlertTitle');
+            const msgEl = document.getElementById('customAlertMessage');
+            const iconEl = document.getElementById('customAlertIcon');
+            const headerEl = document.getElementById('customAlertHeader');
+            const btnEl = document.getElementById('customAlertBtn');
+
+            titleEl.innerText = title;
+            msgEl.innerHTML = message;
+            alertRedirectUrl = redirectUrl;
+
+            // Style based on type (success, info, or error)
+            if (type === 'success') {
+                iconEl.className = 'fas fa-check-circle text-2xl text-green-500';
+                headerEl.className = 'px-6 py-4 flex items-center gap-3 border-b bg-green-50 border-green-100';
+                btnEl.className = 'bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md';
+            } else if (type === 'info') {
+                iconEl.className = 'fas fa-info-circle text-2xl text-blue-500';
+                headerEl.className = 'px-6 py-4 flex items-center gap-3 border-b bg-blue-50 border-blue-100';
+                btnEl.className = 'bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md';
+            } else {
+                iconEl.className = 'fas fa-exclamation-circle text-2xl text-red-500';
+                headerEl.className = 'px-6 py-4 flex items-center gap-3 border-b bg-red-50 border-red-100';
+                btnEl.className = 'bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md';
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            // Trigger animation
+            setTimeout(() => {
+                box.classList.remove('translate-y-4', 'opacity-0');
+                box.classList.add('translate-y-0', 'opacity-100');
+            }, 10);
+        }
+
+        document.getElementById('customAlertBtn').addEventListener('click', function() {
+            const modal = document.getElementById('customAlertModal');
+            const box = document.getElementById('customAlertBox');
+            
+            box.classList.remove('translate-y-0', 'opacity-100');
+            box.classList.add('translate-y-4', 'opacity-0');
+            
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                if (alertRedirectUrl) {
+                    window.location.href = alertRedirectUrl;
+                }
+            }, 300);
+        });
     </script>
 </body>
 </html>

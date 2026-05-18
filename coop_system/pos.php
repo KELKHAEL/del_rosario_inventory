@@ -9,6 +9,7 @@ if ($setting_res && $setting_res->num_rows > 0) {
 }
 
 // PROCESS THE CHECKOUT CART
+$checkout_success = false;
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
     $cart = json_decode($_POST['cart_data'], true);
     $payment = $conn->real_escape_string($_POST['payment_method']);
@@ -24,14 +25,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
             $id = (int)$item['id'];
             $qty = (int)$item['qty'];
             
-            // Deduct from master inventory (negative logic is handled in the frontend UI, DB just executes)
             $conn->query("UPDATE inventory SET current_quantity = current_quantity - $qty WHERE product_id=$id");
             
             $conn->query("INSERT INTO inventory_outsourcing (record_date, product_id, quantity_out, payment_method, receipt_no, buyer_name, buyer_contact) 
                           VALUES ('$date', $id, $qty, '$payment', '$receipt', '$buyer_name', '$buyer_contact')");
         }
-        echo "<script>alert('Checkout Successful!'); window.location.href='outsourcing_report.php';</script>";
-        exit();
+        // Flag for the success alert to trigger on page load
+        $checkout_success = true;
     }
 }
 
@@ -68,6 +68,22 @@ if ($res_units) {
     </script>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
+
+    <div id="customAlertModal" class="fixed inset-0 z-[1000] hidden items-center justify-center p-4">
+        <div class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm transition-opacity"></div>
+        
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all z-10 flex flex-col translate-y-4 opacity-0" id="customAlertBox">
+            <div id="customAlertHeader" class="px-6 py-4 flex items-center gap-3 border-b">
+                <i id="customAlertIcon" class="fas fa-exclamation-circle text-2xl"></i>
+                <h3 id="customAlertTitle" class="text-lg font-bold tracking-tight">Alert</h3>
+            </div>
+            <div class="p-6 text-gray-600 text-sm leading-relaxed" id="customAlertMessage">
+                </div>
+            <div class="bg-gray-50 px-6 py-4 flex justify-end">
+                <button id="customAlertBtn" class="bg-primary hover:bg-primaryDark text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md">OK</button>
+            </div>
+        </div>
+    </div>
 
     <div class="flex h-screen w-full">
 
@@ -243,6 +259,67 @@ if ($res_units) {
             overlay.classList.toggle('hidden');
         }
 
+        // --- CUSTOM ALERT LOGIC ---
+        let alertRedirectUrl = null;
+
+        function showCustomAlert(title, message, type = 'error', redirectUrl = null) {
+            const modal = document.getElementById('customAlertModal');
+            const box = document.getElementById('customAlertBox');
+            const titleEl = document.getElementById('customAlertTitle');
+            const msgEl = document.getElementById('customAlertMessage');
+            const iconEl = document.getElementById('customAlertIcon');
+            const headerEl = document.getElementById('customAlertHeader');
+            const btnEl = document.getElementById('customAlertBtn');
+
+            titleEl.innerText = title;
+            msgEl.innerHTML = message;
+            alertRedirectUrl = redirectUrl;
+
+            // Style based on type (success or error)
+            if (type === 'success') {
+                iconEl.className = 'fas fa-check-circle text-2xl text-green-500';
+                headerEl.className = 'px-6 py-4 flex items-center gap-3 border-b bg-green-50 border-green-100';
+                btnEl.className = 'bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md';
+            } else {
+                iconEl.className = 'fas fa-exclamation-circle text-2xl text-red-500';
+                headerEl.className = 'px-6 py-4 flex items-center gap-3 border-b bg-red-50 border-red-100';
+                btnEl.className = 'bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md';
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            // Trigger animation
+            setTimeout(() => {
+                box.classList.remove('translate-y-4', 'opacity-0');
+                box.classList.add('translate-y-0', 'opacity-100');
+            }, 10);
+        }
+
+        document.getElementById('customAlertBtn').addEventListener('click', function() {
+            const modal = document.getElementById('customAlertModal');
+            const box = document.getElementById('customAlertBox');
+            
+            box.classList.remove('translate-y-0', 'opacity-100');
+            box.classList.add('translate-y-4', 'opacity-0');
+            
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                if (alertRedirectUrl) {
+                    window.location.href = alertRedirectUrl;
+                }
+            }, 300);
+        });
+
+        // Trigger Success Alert from PHP if checkout was processed
+        <?php if ($checkout_success): ?>
+            document.addEventListener('DOMContentLoaded', () => {
+                showCustomAlert('Transaction Complete', 'The checkout was processed successfully. Inventory levels have been updated.', 'success', 'outsourcing_report.php');
+            });
+        <?php endif; ?>
+
+
         let cart = {};
         const allowNegativeStock = <?= $allow_negative ?> === 1;
 
@@ -314,19 +391,19 @@ if ($res_units) {
             cards.forEach(card => container.appendChild(card));
         }
 
-        // Cart Logic
+        // Cart Logic (Updated to use custom alerts)
         function addToCart(id, name, price, maxQty) {
             if (cart[id]) {
                 if (allowNegativeStock || cart[id].qty < maxQty) {
                     cart[id].qty++;
                 } else {
-                    alert("Cannot exceed current stock limit of " + maxQty + " (Negative Stock is Disabled)!");
+                    showCustomAlert('Stock Limit Reached', `Cannot exceed current stock limit of <strong>${maxQty}</strong>.<br><br><em>(Negative Stock mapping is currently disabled in settings)</em>`, 'error');
                 }
             } else {
                 if (allowNegativeStock || maxQty > 0) {
                     cart[id] = { name: name, price: price, qty: 1, max: maxQty };
                 } else {
-                    alert("Item is out of stock! (Negative Stock is Disabled)");
+                    showCustomAlert('Out of Stock', `This item is completely out of stock.<br><br><em>(Negative Stock mapping is currently disabled in settings)</em>`, 'error');
                 }
             }
             renderCart();
@@ -335,7 +412,7 @@ if ($res_units) {
         function updateQty(id, newQty) {
             let n = parseInt(newQty);
             if (!allowNegativeStock && n > cart[id].max) {
-                alert("Cannot exceed current stock (" + cart[id].max + ")!");
+                showCustomAlert('Stock Limit Reached', `Cannot manually enter a quantity higher than the current stock limit of <strong>${cart[id].max}</strong>.`, 'error');
                 cart[id].qty = cart[id].max;
             } else if (n < 1) {
                 delete cart[id];
@@ -404,7 +481,7 @@ if ($res_units) {
         function processCheckout() {
             if (!document.getElementById('checkoutForm').reportValidity()) return;
             if (Object.keys(cart).length === 0) {
-                alert("Your cart is empty! Please add products first.");
+                showCustomAlert('Empty Cart', 'Your checkout cart is completely empty. Please add items to the cart before confirming the checkout.', 'error');
                 return;
             }
 

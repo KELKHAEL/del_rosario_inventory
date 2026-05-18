@@ -2,11 +2,44 @@
 session_start();
 include 'db.php'; 
 
-// Fetch Config Data
+if (!isset($_GET['id']) || empty($_GET['id'])) {
+    $_SESSION['alert_title'] = "Invalid Access";
+    $_SESSION['alert_message'] = "No valid Member ID was provided.";
+    $_SESSION['alert_type'] = "error";
+    header("Location: index.php");
+    exit();
+}
+
+$member_id = (int)$_GET['id'];
+
+$stmt = $conn->prepare("SELECT * FROM members WHERE member_id = ?");
+$stmt->bind_param("i", $member_id);
+$stmt->execute();
+$member_result = $stmt->get_result();
+
+if ($member_result->num_rows === 0) {
+    $_SESSION['alert_title'] = "Record Not Found";
+    $_SESSION['alert_message'] = "The requested member profile could not be found in the database.";
+    $_SESSION['alert_type'] = "error";
+    header("Location: index.php");
+    exit();
+}
+$member = $member_result->fetch_assoc();
+$stmt->close();
+
+$stmt_ben = $conn->prepare("SELECT * FROM beneficiaries WHERE member_id = ?");
+$stmt_ben->bind_param("i", $member_id);
+$stmt_ben->execute();
+$beneficiaries_result = $stmt_ben->get_result();
+$beneficiaries = [];
+while($b_row = $beneficiaries_result->fetch_assoc()) {
+    $beneficiaries[] = $b_row;
+}
+$stmt_ben->close();
+
 function fetchConfig($conn, $table, $default_fallback = []) {
     $data = [];
     try {
-        // Removed standard ORDER BY so we can run custom PHP sorting below
         $res = $conn->query("SELECT name FROM $table"); 
         if ($res && $res->num_rows > 0) {
             while($row = $res->fetch_assoc()) {
@@ -21,7 +54,7 @@ function fetchConfig($conn, $table, $default_fallback = []) {
     return $data;
 }
 
-// 1. Sort Occupations (Alphabetical, but force 'Others' to bottom)
+// Sort Occupations (Alphabetical, force 'Others' to bottom)
 $raw_occupations = fetchConfig($conn, 'config_occupations', ['Private Employee', 'Gov\'t Employee', 'Self-Employed', 'Others']);
 $others_arr = [];
 $regs_arr = [];
@@ -32,11 +65,14 @@ foreach($raw_occupations as $o) {
         $regs_arr[] = $o;
     }
 }
-natcasesort($regs_arr); // Sort non-others alphabetically
-if(empty($others_arr)) $others_arr[] = 'Others'; // Guarantee 'Others' exists
+natcasesort($regs_arr);
+if(empty($others_arr)) $others_arr[] = 'Others';
 $occupations = array_merge($regs_arr, $others_arr);
 
-// 2. Sort Incomes (Mathematical Highest to Lowest)
+// Check if member has a custom "Others" occupation
+$is_other_occ = !empty($member['occupation']) && !in_array($member['occupation'], $occupations);
+
+// Sort Incomes (Mathematical Highest to Lowest)
 $incomes = fetchConfig($conn, 'config_monthly_income', ['Below 5,000', '5,000 - 9,999', '10,000+']);
 usort($incomes, function($a, $b) {
     preg_match_all('/\d+/', str_replace(',', '', $a), $ma);
@@ -52,7 +88,7 @@ usort($incomes, function($a, $b) {
 });
 
 $civil_statuses = fetchConfig($conn, 'config_civil_status', ['Single', 'Married', 'Widowed']);
-sort($civil_statuses); // Standard Alphabetical
+sort($civil_statuses);
 ?>
 
 <!DOCTYPE html>
@@ -60,7 +96,7 @@ sort($civil_statuses); // Standard Alphabetical
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Membership Form - Coop DBMS</title>
+    <title>Edit Member - <?= htmlspecialchars($member['last_name']) ?></title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -112,7 +148,6 @@ sort($civil_statuses); // Standard Alphabetical
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
-            
             <nav class="flex-1 overflow-y-auto py-4 flex flex-col gap-1">
                 <a href="index.php" class="flex items-center px-6 py-3 bg-primary text-white font-semibold border-l-4 border-primaryDark">
                     <i class="fas fa-users w-6"></i> MEMBERSHIP DIRECTORY
@@ -142,110 +177,112 @@ sort($civil_statuses); // Standard Alphabetical
                     <button class="text-gray-500 focus:outline-none md:hidden hover:text-primary" onclick="toggleSidebar()">
                         <i class="fas fa-bars text-2xl"></i>
                     </button>
-                    <h1 class="text-xl md:text-2xl font-bold text-gray-800 tracking-tight">Create New Membership</h1>
+                    <h1 class="text-xl md:text-2xl font-bold text-gray-800 tracking-tight">Edit Membership Record</h1>
                 </div>
                 <a href="index.php" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm hidden sm:flex items-center">
-                    <i class="fas fa-arrow-left mr-2"></i> BACK TO LIST
+                    <i class="fas fa-arrow-left mr-2"></i> CANCEL
                 </a>
             </header>
 
             <div class="flex-1 overflow-y-auto p-4 md:p-8">
                 
-                <form action="process_membership.php" method="POST" class="max-w-6xl mx-auto pb-12">
+                <form action="process_edit_membership.php" method="POST" class="max-w-6xl mx-auto pb-12">
                     
+                    <input type="hidden" name="member_id" value="<?= $member_id ?>">
+
                     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8 mb-6">
                         <h4 class="text-lg font-bold text-primary border-b border-gray-100 pb-3 mb-6"><i class="fas fa-user-circle mr-2"></i>Personal Information</h4>
                         
                         <div class="mb-6 w-full md:w-1/3">
                             <label class="block text-sm font-bold text-primary mb-1">Form ID (Optional)</label>
-                            <input type="text" name="form_id" placeholder="Leave blank if no form ID yet" class="w-full rounded-md border border-purple-300 bg-purple-50 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all placeholder-purple-300">
+                            <input type="text" name="form_id" value="<?= htmlspecialchars($member['form_id'] ?? '') ?>" class="w-full rounded-md border border-purple-300 bg-purple-50 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Last Name (Surname) <span class="text-red-500">*</span></label>
-                                <input type="text" name="last_name" pattern="[A-Za-z\s\-]+" title="Letters and spaces only" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                <input type="text" name="last_name" value="<?= htmlspecialchars($member['last_name']) ?>" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">First Name <span class="text-red-500">*</span></label>
-                                <input type="text" name="first_name" pattern="[A-Za-z\s\-]+" title="Letters and spaces only" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                <input type="text" name="first_name" value="<?= htmlspecialchars($member['first_name']) ?>" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
-                                <input type="text" name="middle_name" pattern="[A-Za-z\s\-]+" title="Letters and spaces only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                <input type="text" name="middle_name" value="<?= htmlspecialchars($member['middle_name'] ?? '') ?>" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                             </div>
 
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Date of Birth <span class="text-red-500">*</span></label>
-                                <input type="date" name="date_of_birth" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                <input type="date" name="date_of_birth" value="<?= htmlspecialchars($member['date_of_birth'] ?? '') ?>" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                             </div>
                             <div class="lg:col-span-2">
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Birth Place</label>
-                                <input type="text" name="birth_place" pattern="[A-Za-z\s\-]+" title="Letters and spaces only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                <input type="text" name="birth_place" value="<?= htmlspecialchars($member['birth_place'] ?? '') ?>" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                             </div>
 
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Civil Status</label>
                                 <select name="civil_status" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all bg-white">
-                                    <option value="" disabled selected>Select Status</option>
+                                    <option value="">Select Status</option>
                                     <?php foreach($civil_statuses as $status): ?>
-                                        <option value="<?= htmlspecialchars($status) ?>"><?= htmlspecialchars($status) ?></option>
+                                        <option value="<?= htmlspecialchars($status) ?>" <?= ($member['civil_status'] == $status) ? 'selected' : '' ?>><?= htmlspecialchars($status) ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Religion</label>
-                                <input type="text" name="religion" pattern="[A-Za-z\s]+" title="Letters only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                <input type="text" name="religion" value="<?= htmlspecialchars($member['religion'] ?? '') ?>" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                             </div>
                             
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Sex</label>
                                 <select name="sex" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all bg-white">
-                                    <option value="" disabled selected>Select Sex</option>
-                                    <option value="MALE">Male</option>
-                                    <option value="FEMALE">Female</option>
-                                    <option value="RATHER NOT SAY">Rather Not Say</option>
+                                    <option value="">Select Sex</option>
+                                    <option value="MALE" <?= ($member['sex'] == 'MALE') ? 'selected' : '' ?>>Male</option>
+                                    <option value="FEMALE" <?= ($member['sex'] == 'FEMALE') ? 'selected' : '' ?>>Female</option>
+                                    <option value="RATHER NOT SAY" <?= ($member['sex'] == 'RATHER NOT SAY') ? 'selected' : '' ?>>Rather Not Say</option>
                                 </select>
                             </div>
 
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Tribe</label>
-                                <input type="text" name="tribe" pattern="[A-Za-z\s]+" title="Letters only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                <input type="text" name="tribe" value="<?= htmlspecialchars($member['tribe'] ?? '') ?>" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">SSS / GSIS No.</label>
-                                <input type="text" name="sss_gsis_no" pattern="[\d\-]+" title="Numbers and dashes only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                <input type="text" name="sss_gsis_no" value="<?= htmlspecialchars($member['sss_gsis_no'] ?? '') ?>" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">TIN No.</label>
-                                <input type="text" name="tin_no" pattern="[\d\-]+" title="Numbers and dashes only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                <input type="text" name="tin_no" value="<?= htmlspecialchars($member['tin_no'] ?? '') ?>" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                             </div>
 
                             <div class="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-4 gap-6">
                                 <div class="md:col-span-1">
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
-                                    <input type="text" name="postal_code" pattern="\d{4}" title="Must be exactly 4 digits" maxlength="4" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                    <input type="text" name="postal_code" value="<?= htmlspecialchars($member['postal_code'] ?? '') ?>" maxlength="4" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                                 </div>
                                 <div class="md:col-span-3">
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Home Address <span class="text-red-500">*</span></label>
-                                    <input type="text" name="address" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                    <input type="text" name="address" value="<?= htmlspecialchars($member['address'] ?? '') ?>" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                                 </div>
                             </div>
 
                             <div class="md:col-span-2 lg:col-span-3">
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Business / Office Address</label>
-                                <input type="text" name="business_office_address" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                <input type="text" name="business_office_address" value="<?= htmlspecialchars($member['business_office_address'] ?? '') ?>" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                             </div>
 
                             <div class="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Educational Attainment</label>
-                                    <input type="text" name="educational_attainment" pattern="[A-Za-z\s\.\-]+" title="Letters and basic punctuation only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                    <input type="text" name="educational_attainment" value="<?= htmlspecialchars($member['educational_attainment'] ?? '') ?>" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Present Employment / Business</label>
-                                    <input type="text" name="present_employment_business" pattern="[A-Za-z\s\.\-]+" title="Letters and basic punctuation only" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                    <input type="text" name="present_employment_business" value="<?= htmlspecialchars($member['present_employment_business'] ?? '') ?>" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                                 </div>
                             </div>
 
@@ -271,9 +308,26 @@ sort($civil_statuses); // Standard Alphabetical
                                     </tr>
                                 </thead>
                                 <tbody id="ben-tbody" class="divide-y divide-gray-100">
-                                    </tbody>
+                                    <?php if(count($beneficiaries) > 0): ?>
+                                        <?php foreach($beneficiaries as $ben): ?>
+                                            <tr class="hover:bg-gray-50 transition-colors">
+                                                <input type="hidden" name="existing_ben_ids[]" value="<?= $ben['beneficiary_id'] ?>">
+                                                <td class="px-4 py-2"><input type="text" name="ben_last_name[]" value="<?= htmlspecialchars($ben['last_name']) ?>" required class="w-full rounded border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none border"></td>
+                                                <td class="px-4 py-2"><input type="text" name="ben_first_name[]" value="<?= htmlspecialchars($ben['first_name']) ?>" required class="w-full rounded border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none border"></td>
+                                                <td class="px-4 py-2"><input type="text" name="ben_middle_name[]" value="<?= htmlspecialchars($ben['middle_name'] ?? '') ?>" class="w-full rounded border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none border"></td>
+                                                <td class="px-4 py-2"><input type="date" name="ben_dob[]" value="<?= htmlspecialchars($ben['date_of_birth'] ?? '') ?>" class="w-full rounded border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none border text-gray-600"></td>
+                                                <td class="px-4 py-2"><input type="text" name="ben_rel[]" value="<?= htmlspecialchars($ben['relationship'] ?? '') ?>" required class="w-full rounded border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none border"></td>
+                                                <td class="px-4 py-2 text-center">
+                                                    <button type="button" class="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-md p-1.5 transition-colors" title="Remove" onclick="removeRow(this)">
+                                                        <i class="fas fa-trash-alt"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
                             </table>
-                            <div id="emptyBenState" class="p-6 text-center text-gray-400 text-sm">No beneficiaries added yet.</div>
+                            <div id="emptyBenState" class="p-6 text-center text-gray-400 text-sm" style="<?= count($beneficiaries) > 0 ? 'display:none;' : '' ?>">No beneficiaries added yet.</div>
                         </div>
                     </div>
 
@@ -286,16 +340,25 @@ sort($civil_statuses); // Standard Alphabetical
                                 <label class="block text-sm font-semibold text-gray-700 mb-3">Occupation Status</label>
                                 <div class="grid grid-cols-2 gap-3">
                                     <?php foreach($occupations as $occ): ?>
+                                        <?php 
+                                        $checked = '';
+                                        if (strtolower($occ) === 'others' && $is_other_occ) {
+                                            $checked = 'checked';
+                                        } elseif ($member['occupation'] === $occ) {
+                                            $checked = 'checked';
+                                        }
+                                        ?>
                                         <label class="radio-card cursor-pointer relative">
-                                            <input type="radio" name="occupation" value="<?= htmlspecialchars($occ) ?>" class="peer sr-only occupation-radio">
+                                            <input type="radio" name="occupation" value="<?= htmlspecialchars($occ) ?>" class="peer sr-only occupation-radio" <?= $checked ?>>
                                             <div class="rounded-md border border-gray-200 px-4 py-3 text-sm text-gray-600 hover:bg-gray-50 transition-all text-center">
                                                 <?= htmlspecialchars($occ) ?>
                                             </div>
                                         </label>
                                     <?php endforeach; ?>
                                 </div>
-                                <div id="other_occ_container" class="hidden mt-3">
-                                    <input type="text" id="other_occ_input" placeholder="Please specify your occupation" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                                
+                                <div id="other_occ_container" class="<?= $is_other_occ ? '' : 'hidden' ?> mt-3">
+                                    <input type="text" id="other_occ_input" value="<?= $is_other_occ ? htmlspecialchars($member['occupation']) : '' ?>" placeholder="Please specify your occupation" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
                                 </div>
                             </div>
 
@@ -304,7 +367,7 @@ sort($civil_statuses); // Standard Alphabetical
                                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                     <?php foreach($incomes as $inc): ?>
                                         <label class="radio-card cursor-pointer relative">
-                                            <input type="radio" name="monthly_income" value="<?= htmlspecialchars($inc) ?>" class="peer sr-only">
+                                            <input type="radio" name="monthly_income" value="<?= htmlspecialchars($inc) ?>" class="peer sr-only" <?= ($member['monthly_income'] == $inc) ? 'checked' : '' ?>>
                                             <div class="rounded-md border border-gray-200 px-3 py-3 text-sm text-gray-600 hover:bg-gray-50 transition-all text-center">
                                                 <?= htmlspecialchars($inc) ?>
                                             </div>
@@ -317,8 +380,8 @@ sort($civil_statuses); // Standard Alphabetical
                     </div>
 
                     <div class="flex justify-end mt-8">
-                        <button type="submit" class="bg-primary hover:bg-primaryDark text-white font-bold py-3 px-8 rounded-lg shadow-md transition-transform transform hover:-translate-y-0.5 text-lg w-full md:w-auto">
-                            <i class="fas fa-save mr-2"></i> SAVE MEMBERSHIP RECORD
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition-transform transform hover:-translate-y-0.5 text-lg w-full md:w-auto">
+                            <i class="fas fa-save mr-2"></i> UPDATE MEMBERSHIP RECORD
                         </button>
                     </div>
 
@@ -335,7 +398,6 @@ sort($civil_statuses); // Standard Alphabetical
             overlay.classList.toggle('hidden');
         }
 
-        // --- CUSTOM ALERT LOGIC ---
         let alertRedirectUrl = null;
 
         function showCustomAlert(title, message, type = 'error', redirectUrl = null) {
@@ -390,7 +452,7 @@ sort($civil_statuses); // Standard Alphabetical
             }, 300);
         });
 
-        // --- CATCH PHP SESSION ALERTS ---
+        // Catch Session Alerts
         <?php if (isset($_SESSION['alert_message'])): ?>
             document.addEventListener('DOMContentLoaded', () => {
                 showCustomAlert(
@@ -432,11 +494,10 @@ sort($civil_statuses); // Standard Alphabetical
             }
         });
 
-        // Beneficiary Table Logic
         const addBtn = document.getElementById('addBenBtn');
         const tbody = document.getElementById('ben-tbody');
         const emptyState = document.getElementById('emptyBenState');
-        let rowCount = 0;
+        let rowCount = <?= count($beneficiaries) ?>;
 
         addBtn.addEventListener('click', function() {
             if(rowCount >= 20) {
@@ -450,6 +511,7 @@ sort($civil_statuses); // Standard Alphabetical
             tr.className = "hover:bg-gray-50 transition-colors";
             
             tr.innerHTML = `
+                <input type="hidden" name="existing_ben_ids[]" value="new">
                 <td class="px-4 py-2"><input type="text" name="ben_last_name[]" placeholder="Last Name" required class="w-full rounded border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none border"></td>
                 <td class="px-4 py-2"><input type="text" name="ben_first_name[]" placeholder="First Name" required class="w-full rounded border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none border"></td>
                 <td class="px-4 py-2"><input type="text" name="ben_middle_name[]" placeholder="M.I." class="w-full rounded border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none border"></td>

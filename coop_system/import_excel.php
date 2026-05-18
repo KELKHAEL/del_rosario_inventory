@@ -1,4 +1,5 @@
 <?php
+session_start();
 include 'db.php';
 require 'vendor/autoload.php'; 
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -11,25 +12,45 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
     $worksheet = $spreadsheet->getActiveSheet();
     $rows = $worksheet->toArray();
 
-    $db_map = [];
+    // 1. THE HEADER THESAURUS (Alias Mapping)
+    $header_aliases = [
+        'form_id'      => ['formid', 'id', 'formno'],
+        'member_name'  => ['membername', 'name', 'fullname', 'membersname'],
+        'dob'          => ['dateofbirth', 'dob', 'birthdate'],
+        'birth_place'  => ['birthplace', 'placeofbirth'],
+        'civil_status' => ['civilstatus', 'status'],
+        'religion'     => ['religion'],
+        'sex'          => ['sex', 'gender'],
+        'tribe'        => ['tribe'],
+        'sss_no'       => ['sssgsisno', 'sssno', 'gsisno', 'sss'],
+        'tin_no'       => ['tinno', 'tin'],
+        'postal_code'  => ['postalcode', 'zipcode'],
+        'address'      => ['address', 'homeaddress'],
+        'business_add' => ['businessofficeaddress', 'businessaddress', 'officeaddress'],
+        'education'    => ['educationalattainment', 'education', 'attainment'],
+        'employment'   => ['presentemploymentbusinessactivities', 'presentemployment', 'businessactivities', 'employment'],
+        'occupation'   => ['occupation', 'job'],
+        'income'       => ['monthlyincome', 'income'],
+        'ben_name'     => ['beneficiariesnames', 'beneficiariesname', 'beneficiaryname', 'beneficiary', 'benname'],
+        'ben_dob'      => ['beneficiariesdateofbirth', 'beneficiarydateofbirth', 'bendob'],
+        'ben_rel'      => ['relationshiptothemember', 'relationship', 'rel']
+    ];
+
     $res_map = $conn->query("SELECT system_field, excel_header_name FROM config_excel_headers");
-    
     if ($res_map && $res_map->num_rows > 0) {
         while($m = $res_map->fetch_assoc()) {
-            $db_map[$m['system_field']] = preg_replace('/[^a-z0-9]/', '', strtolower(trim($m['excel_header_name'])));
+            $sys_field = $m['system_field'];
+            $cleaned_header = preg_replace('/[^a-z0-9]/', '', strtolower(trim($m['excel_header_name'])));
+            
+            if ($sys_field === 'business_address') $sys_field = 'business_add';
+            
+            if (!empty($cleaned_header) && isset($header_aliases[$sys_field])) {
+                array_unshift($header_aliases[$sys_field], $cleaned_header);
+            }
         }
-    } else {
-        $db_map = [
-            'form_id' => 'formid', 'member_name' => 'membername', 'dob' => 'dateofbirth',
-            'birth_place' => 'birthplace', 'civil_status' => 'civilstatus', 'religion' => 'religion',
-            'sex' => 'sex', 'tribe' => 'tribe', 'sss_no' => 'sssgsisno', 'tin_no' => 'tinno',
-            'postal_code' => 'postalcode', 'address' => 'address', 'business_address' => 'businessofficeaddress',
-            'education' => 'educationalattainment', 'employment' => 'presentemploymentbusinessactivities',
-            'occupation' => 'occupation', 'income' => 'monthlyincome', 'ben_name' => 'beneficiariesnames',
-            'ben_dob' => 'beneficiariesdateofbirth', 'ben_rel' => 'relationshiptothemember'
-        ];
     }
 
+    // 2. THE BULLETPROOF DATE PARSER
     function parseDate($input) {
         $input = trim((string)$input);
         if (empty($input)) return null;
@@ -70,22 +91,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
                 return $d->format('Y-m-d');
             }
         }
-
         return null;
     }
 
+    // 3. THE ULTIMATE NAME SPLITTER
     function splitName($fullName, $isStrictMember = false) {
         $last = ''; $first = ''; $middle = '';
         
-        // CRITICAL FIX: We no longer strip periods from the name.
-        $cleanName = preg_replace('/\s+/', ' ', trim($fullName));
+        $cleanName = preg_replace('/\s+/', ' ', trim($fullName)); 
         
         if (strpos($cleanName, ',') !== false) {
             $parts = explode(',', $cleanName, 2);
             $last = trim($parts[0]);
             
             $fm_parts = explode(' ', trim($parts[1]));
-            
             if (count($fm_parts) > 1) {
                 if ($isStrictMember) {
                     $middle = array_pop($fm_parts);
@@ -119,58 +138,90 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         return [strtoupper($last), strtoupper($first), strtoupper($middle)];
     }
 
-    $last_inserted_member_id = null;
-    
+    // --- DYNAMIC HEADER DETECTION ---
     $excel_header_index_map = [];
     $start_row = 1;
-    $form_id_header = $db_map['form_id']; 
     
     for ($i = 0; $i < min(10, count($rows)); $i++) {
-        $first_cell_clean = preg_replace('/[^a-z0-9]/', '', strtolower((string)($rows[$i][0] ?? '')));
+        $is_header_row = false;
         
-        if ($first_cell_clean === $form_id_header) {
-            $start_row = $i + 1;
-            foreach($rows[$i] as $col_index => $col_name) {
-                $clean_col = preg_replace('/[^a-z0-9]/', '', strtolower((string)$col_name));
-                if(!empty($clean_col)) {
-                    $excel_header_index_map[$clean_col] = $col_index;
+        foreach($rows[$i] as $col_index => $col_name) {
+            $clean_col = preg_replace('/[^a-z0-9]/', '', strtolower((string)$col_name));
+            
+            if (!empty($clean_col)) {
+                foreach ($header_aliases as $sys_field => $aliases) {
+                    if (in_array($clean_col, $aliases)) {
+                        $excel_header_index_map[$sys_field] = $col_index;
+                        if ($sys_field === 'form_id' || $sys_field === 'member_name') {
+                            $is_header_row = true;
+                        }
+                        break;
+                    }
                 }
             }
+        }
+        
+        if ($is_header_row) {
+            $start_row = $i + 1; 
             break;
         }
     }
 
-    function getVal($row, $excel_map, $db_map, $system_field) {
-        $expected_header = $db_map[$system_field] ?? '';
-        if ($expected_header !== '' && isset($excel_map[$expected_header]) && isset($row[$excel_map[$expected_header]])) {
-            $val = trim((string)$row[$excel_map[$expected_header]]);
+    function getVal($row, $excel_map, $system_field) {
+        if (isset($excel_map[$system_field]) && isset($row[$excel_map[$system_field]])) {
+            $val = trim((string)$row[$excel_map[$system_field]]);
             if ($val !== '') return strtoupper($val);
         }
         return '';
     }
 
+    $last_inserted_member_id = null;
+
+    // Loop through Excel Rows
     for ($i = $start_row; $i < count($rows); $i++) {
         $row = $rows[$i];
         if (!is_array($row)) continue;
 
-        $form_id        = getVal($row, $excel_header_index_map, $db_map, 'form_id');
-        $full_name      = getVal($row, $excel_header_index_map, $db_map, 'member_name');
-        $ben_name       = getVal($row, $excel_header_index_map, $db_map, 'ben_name');
+        $form_id        = getVal($row, $excel_header_index_map, 'form_id');
+        $full_name      = getVal($row, $excel_header_index_map, 'member_name');
+        $ben_name       = getVal($row, $excel_header_index_map, 'ben_name');
 
         if (empty($full_name) && empty($ben_name)) {
             continue;
         }
 
+        // -- 1. PROCESS MEMBER --
         if (!empty($full_name)) {
             list($last_name, $first_name, $middle_name) = splitName($full_name, true);
 
-            $expected_dob_header = $db_map['dob'] ?? '';
-            $dob_val = (isset($excel_header_index_map[$expected_dob_header]) && isset($row[$excel_header_index_map[$expected_dob_header]])) ? $row[$excel_header_index_map[$expected_dob_header]] : '';
+            $dob_val = isset($excel_header_index_map['dob']) ? $row[$excel_header_index_map['dob']] : '';
             $dob = parseDate($dob_val);
 
-            // CRITICAL FIX: Match by Form ID first. It is mathematically impossible for this to fail or create duplicates.
+            // Extract all other fields mapped from the Excel row
+            $form_id_insert = ($form_id === '') ? null : $form_id;
+            $birth_place    = getVal($row, $excel_header_index_map, 'birth_place');
+            $civil_status   = getVal($row, $excel_header_index_map, 'civil_status');
+            $religion       = getVal($row, $excel_header_index_map, 'religion');
+            $tribe          = getVal($row, $excel_header_index_map, 'tribe');
+            $sss            = preg_replace('/[^0-9\-]/', '', getVal($row, $excel_header_index_map, 'sss_no'));
+            $tin            = preg_replace('/[^0-9\-]/', '', getVal($row, $excel_header_index_map, 'tin_no'));
+            $postal         = preg_replace('/[^0-9]/', '', getVal($row, $excel_header_index_map, 'postal_code'));
+            $address        = getVal($row, $excel_header_index_map, 'address');
+            $business_add   = getVal($row, $excel_header_index_map, 'business_add');
+            $education      = getVal($row, $excel_header_index_map, 'education');
+            $employment     = getVal($row, $excel_header_index_map, 'employment');
+            $occupation     = getVal($row, $excel_header_index_map, 'occupation');
+            $income         = getVal($row, $excel_header_index_map, 'income');
+            
+            $raw_sex = strtolower(getVal($row, $excel_header_index_map, 'sex'));
+            $sex = '';
+            if (strpos($raw_sex, 'female') !== false || $raw_sex === 'f') $sex = 'FEMALE';
+            elseif (strpos($raw_sex, 'male') !== false || $raw_sex === 'm') $sex = 'MALE';
+
+
             $existing_member_id = null;
 
+            // Priority Match 1: Form ID
             if (!empty($form_id)) {
                 $check_stmt = $conn->prepare("SELECT member_id FROM members WHERE form_id = ?");
                 $check_stmt->bind_param("s", $form_id);
@@ -182,9 +233,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
                 $check_stmt->close();
             }
 
+            // Priority Match 2: Exact Name
             if ($existing_member_id === null) {
-                $check_stmt = $conn->prepare("SELECT member_id FROM members WHERE last_name = ? AND first_name = ?");
-                $check_stmt->bind_param("ss", $last_name, $first_name);
+                $check_stmt = $conn->prepare("SELECT member_id FROM members WHERE last_name = ? AND first_name = ? AND middle_name = ?");
+                $check_stmt->bind_param("sss", $last_name, $first_name, $middle_name);
                 $check_stmt->execute();
                 $check_res = $check_stmt->get_result();
                 if ($check_res->num_rows > 0) {
@@ -196,34 +248,41 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
             if ($existing_member_id !== null) {
                 $last_inserted_member_id = $existing_member_id;
                 
-                if ($dob !== null) {
-                    $update_stmt = $conn->prepare("UPDATE members SET date_of_birth = ? WHERE member_id = ?");
-                    $update_stmt->bind_param("si", $dob, $last_inserted_member_id);
+                // FORCE DATABASE SYNC: Dynamically update all columns that have data in the Excel row
+                $update_parts = [];
+                $update_params = [];
+                $types = "";
+
+                if ($dob !== null) { $update_parts[] = "date_of_birth = ?"; $update_params[] = $dob; $types .= "s"; }
+                if ($birth_place !== '') { $update_parts[] = "birth_place = ?"; $update_params[] = $birth_place; $types .= "s"; }
+                if ($civil_status !== '') { $update_parts[] = "civil_status = ?"; $update_params[] = $civil_status; $types .= "s"; }
+                if ($religion !== '') { $update_parts[] = "religion = ?"; $update_params[] = $religion; $types .= "s"; }
+                if ($sex !== '') { $update_parts[] = "sex = ?"; $update_params[] = $sex; $types .= "s"; }
+                if ($tribe !== '') { $update_parts[] = "tribe = ?"; $update_params[] = $tribe; $types .= "s"; }
+                if ($sss !== '') { $update_parts[] = "sss_gsis_no = ?"; $update_params[] = $sss; $types .= "s"; }
+                if ($tin !== '') { $update_parts[] = "tin_no = ?"; $update_params[] = $tin; $types .= "s"; }
+                if ($postal !== '') { $update_parts[] = "postal_code = ?"; $update_params[] = $postal; $types .= "s"; }
+                if ($address !== '') { $update_parts[] = "address = ?"; $update_params[] = $address; $types .= "s"; }
+                if ($business_add !== '') { $update_parts[] = "business_office_address = ?"; $update_params[] = $business_add; $types .= "s"; }
+                if ($education !== '') { $update_parts[] = "educational_attainment = ?"; $update_params[] = $education; $types .= "s"; }
+                if ($employment !== '') { $update_parts[] = "present_employment_business = ?"; $update_params[] = $employment; $types .= "s"; }
+                if ($occupation !== '') { $update_parts[] = "occupation = ?"; $update_params[] = $occupation; $types .= "s"; }
+                if ($income !== '') { $update_parts[] = "monthly_income = ?"; $update_params[] = $income; $types .= "s"; }
+
+                if (!empty($update_parts)) {
+                    $sql_update = "UPDATE members SET " . implode(', ', $update_parts) . " WHERE member_id = ?";
+                    $update_params[] = $last_inserted_member_id;
+                    $types .= "i";
+                    
+                    $update_stmt = $conn->prepare($sql_update);
+                    // Dynamically bind the exact parameters we extracted
+                    $update_stmt->bind_param($types, ...$update_params);
                     $update_stmt->execute();
                     $update_stmt->close();
                 }
                 
             } else {
-                $form_id_insert = ($form_id === '') ? null : $form_id;
-                $birth_place    = getVal($row, $excel_header_index_map, $db_map, 'birth_place');
-                $civil_status   = getVal($row, $excel_header_index_map, $db_map, 'civil_status');
-                $religion       = getVal($row, $excel_header_index_map, $db_map, 'religion');
-                $tribe          = getVal($row, $excel_header_index_map, $db_map, 'tribe');
-                $sss            = preg_replace('/[^0-9\-]/', '', getVal($row, $excel_header_index_map, $db_map, 'sss_no'));
-                $tin            = preg_replace('/[^0-9\-]/', '', getVal($row, $excel_header_index_map, $db_map, 'tin_no'));
-                $postal         = preg_replace('/[^0-9]/', '', getVal($row, $excel_header_index_map, $db_map, 'postal_code'));
-                $address        = getVal($row, $excel_header_index_map, $db_map, 'address');
-                $business_add   = getVal($row, $excel_header_index_map, $db_map, 'business_address');
-                $education      = getVal($row, $excel_header_index_map, $db_map, 'education');
-                $employment     = getVal($row, $excel_header_index_map, $db_map, 'employment');
-                $occupation     = getVal($row, $excel_header_index_map, $db_map, 'occupation');
-                $income         = getVal($row, $excel_header_index_map, $db_map, 'income');
-                
-                $raw_sex = strtolower(getVal($row, $excel_header_index_map, $db_map, 'sex'));
-                $sex = '';
-                if (strpos($raw_sex, 'female') !== false || $raw_sex === 'f') $sex = 'FEMALE';
-                elseif (strpos($raw_sex, 'male') !== false || $raw_sex === 'm') $sex = 'MALE';
-
+                // INSERT NEW MEMBER
                 $stmt = $conn->prepare("INSERT INTO members (form_id, last_name, first_name, middle_name, date_of_birth, birth_place, civil_status, religion, sex, tribe, sss_gsis_no, tin_no, postal_code, address, business_office_address, educational_attainment, present_employment_business, occupation, monthly_income) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 $stmt->bind_param("sssssssssssssssssss", $form_id_insert, $last_name, $first_name, $middle_name, $dob, $birth_place, $civil_status, $religion, $sex, $tribe, $sss, $tin, $postal, $address, $business_add, $education, $employment, $occupation, $income);
                 $stmt->execute();
@@ -233,23 +292,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
             }
         }
 
+        // -- 2. PROCESS BENEFICIARY --
         if (!empty($ben_name) && $last_inserted_member_id !== null) {
             list($ben_last, $ben_first, $ben_middle) = splitName($ben_name, false);
 
-            // CRITICAL FIX: Forcefully check all known spellings for the Beneficiary Date of Birth.
-            $ben_dob_val = '';
-            $expected_ben_dob = $db_map['ben_dob'] ?? '';
-            
-            if ($expected_ben_dob !== '' && isset($excel_header_index_map[$expected_ben_dob])) {
-                $ben_dob_val = $row[$excel_header_index_map[$expected_ben_dob]];
-            } elseif (isset($excel_header_index_map['beneficiariesdateofbirth'])) {
-                $ben_dob_val = $row[$excel_header_index_map['beneficiariesdateofbirth']];
-            } elseif (isset($excel_header_index_map['beneficiarydateofbirth'])) {
-                $ben_dob_val = $row[$excel_header_index_map['beneficiarydateofbirth']];
-            }
-
+            $ben_dob_val = isset($excel_header_index_map['ben_dob']) ? $row[$excel_header_index_map['ben_dob']] : '';
             $ben_dob = parseDate($ben_dob_val);
-            $ben_rel = getVal($row, $excel_header_index_map, $db_map, 'ben_rel');
+            
+            $ben_rel = getVal($row, $excel_header_index_map, 'ben_rel');
 
             $first_name_keyword = explode(' ', trim($ben_first))[0] . '%'; 
 
@@ -259,6 +309,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
             $b_res = $b_check->get_result();
 
             if ($b_res->num_rows > 0) {
+                // Update existing beneficiary
                 if ($ben_dob !== null) {
                     $upd_b = $conn->prepare("UPDATE beneficiaries SET date_of_birth = ?, relationship = ? WHERE member_id = ? AND last_name = ? AND first_name LIKE ?");
                     $upd_b->bind_param("ssiss", $ben_dob, $ben_rel, $last_inserted_member_id, $ben_last, $first_name_keyword);
@@ -266,6 +317,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
                     $upd_b->close();
                 }
             } else {
+                // Insert new beneficiary
                 $stmt_ben = $conn->prepare("INSERT INTO beneficiaries (member_id, last_name, first_name, middle_name, date_of_birth, relationship) VALUES (?, ?, ?, ?, ?, ?)");
                 $stmt_ben->bind_param("isssss", $last_inserted_member_id, $ben_last, $ben_first, $ben_middle, $ben_dob, $ben_rel);
                 $stmt_ben->execute();
@@ -275,6 +327,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         }
     }
 
-    echo "<script>alert('Excel Upload Complete! System forcefully synced all Information.'); window.location.href='index.php';</script>";
+    // Trigger the beautiful Tailwind Success Modal on the dashboard!
+    $_SESSION['alert_title'] = "Upload Complete";
+    $_SESSION['alert_message'] = "The Excel file was successfully parsed. All existing member profiles were updated and synchronized with the latest data.";
+    $_SESSION['alert_type'] = "success";
+    
+    header("Location: index.php");
+    exit();
 }
 ?>

@@ -1,4 +1,15 @@
-<?php include 'db.php'; ?>
+<?php 
+session_start(); // CRITICAL: Start session to catch alerts from import_excel.php
+include 'db.php'; 
+
+// Fetch the total number of members
+$totalMembers = 0;
+$countQuery = "SELECT COUNT(member_id) as total FROM members";
+$countResult = $conn->query($countQuery);
+if ($countResult && $countResult->num_rows > 0) {
+    $totalMembers = $countResult->fetch_assoc()['total'];
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -27,6 +38,22 @@
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
     
+    <div id="customAlertModal" class="fixed inset-0 z-[1000] hidden items-center justify-center p-4">
+        <div class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm transition-opacity"></div>
+        
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all z-10 flex flex-col translate-y-4 opacity-0" id="customAlertBox">
+            <div id="customAlertHeader" class="px-6 py-4 flex items-center gap-3 border-b">
+                <i id="customAlertIcon" class="fas fa-exclamation-circle text-2xl"></i>
+                <h3 id="customAlertTitle" class="text-lg font-bold tracking-tight">Alert</h3>
+            </div>
+            <div class="p-6 text-gray-600 text-sm leading-relaxed" id="customAlertMessage">
+                </div>
+            <div class="bg-gray-50 px-6 py-4 flex justify-end">
+                <button id="customAlertBtn" class="bg-primary hover:bg-primaryDark text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md">OK</button>
+            </div>
+        </div>
+    </div>
+
     <div class="flex h-screen w-full">
 
         <div id="mobile-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-40 hidden md:hidden transition-opacity" onclick="toggleSidebar()"></div>
@@ -68,7 +95,12 @@
                     <button class="text-gray-500 focus:outline-none md:hidden hover:text-primary" onclick="toggleSidebar()">
                         <i class="fas fa-bars text-2xl"></i>
                     </button>
-                    <h1 class="text-xl md:text-2xl font-bold text-gray-800 tracking-tight">Membership Management</h1>
+                    <div class="flex items-center flex-wrap gap-2 md:gap-4">
+                        <h1 class="text-xl md:text-2xl font-bold text-gray-800 tracking-tight">Membership Management</h1>
+                        <span class="bg-purple-100 text-primary border border-purple-200 text-xs md:text-sm font-bold py-1 px-3 rounded-full shadow-sm">
+                            <i class="fas fa-users mr-1"></i> <?= number_format($totalMembers) ?> Members
+                        </span>
+                    </div>
                 </div>
             </header>
 
@@ -119,6 +151,7 @@
                                         $full_name = htmlspecialchars($row['last_name'] . ", " . $row['first_name'] . " " . $row['middle_name']);
                                         $full_name = trim(str_replace('  ', ' ', $full_name));
 
+                                        // EDIT BUTTON UPDATED TO A LINK POINTING TO edit_member.php
                                         echo "<tr class='member-row hover:bg-purple-50 transition-colors'>
                                                 <td class='px-6 py-3.5 font-semibold text-gray-900'>{$display_id}</td>
                                                 <td class='px-6 py-3.5 capitalize font-medium text-gray-800'>{$full_name}</td>
@@ -126,7 +159,7 @@
                                                 <td class='px-6 py-3.5'>" . htmlspecialchars($row['occupation'] ?? 'N/A') . "</td>
                                                 <td class='px-6 py-3.5 flex justify-center gap-2'>
                                                     <a href='view_member.php?id={$row['member_id']}' class='bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 font-medium py-1 px-3 rounded shadow-sm text-xs transition-colors'><i class='fas fa-eye mr-1 text-primary'></i> VIEW</a>
-                                                    <button class='bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 font-medium py-1 px-3 rounded shadow-sm text-xs transition-colors'><i class='fas fa-edit mr-1 text-blue-600'></i> EDIT</button>
+                                                    <a href='edit_member.php?id={$row['member_id']}' class='bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 font-medium py-1 px-3 rounded shadow-sm text-xs transition-colors inline-block'><i class='fas fa-edit mr-1 text-blue-600'></i> EDIT</a>
                                                 </td>
                                               </tr>";
                                     }
@@ -144,6 +177,78 @@
     </div>
 
     <script>
+        // --- CUSTOM ALERT LOGIC ---
+        let alertRedirectUrl = null;
+
+        function showCustomAlert(title, message, type = 'error', redirectUrl = null) {
+            const modal = document.getElementById('customAlertModal');
+            const box = document.getElementById('customAlertBox');
+            const titleEl = document.getElementById('customAlertTitle');
+            const msgEl = document.getElementById('customAlertMessage');
+            const iconEl = document.getElementById('customAlertIcon');
+            const headerEl = document.getElementById('customAlertHeader');
+            const btnEl = document.getElementById('customAlertBtn');
+
+            titleEl.innerText = title;
+            msgEl.innerHTML = message;
+            alertRedirectUrl = redirectUrl;
+
+            if (type === 'success') {
+                iconEl.className = 'fas fa-check-circle text-2xl text-green-500';
+                headerEl.className = 'px-6 py-4 flex items-center gap-3 border-b bg-green-50 border-green-100';
+                btnEl.className = 'bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md';
+            } else if (type === 'info') {
+                iconEl.className = 'fas fa-info-circle text-2xl text-blue-500';
+                headerEl.className = 'px-6 py-4 flex items-center gap-3 border-b bg-blue-50 border-blue-100';
+                btnEl.className = 'bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md';
+            } else {
+                iconEl.className = 'fas fa-exclamation-circle text-2xl text-red-500';
+                headerEl.className = 'px-6 py-4 flex items-center gap-3 border-b bg-red-50 border-red-100';
+                btnEl.className = 'bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md';
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            setTimeout(() => {
+                box.classList.remove('translate-y-4', 'opacity-0');
+                box.classList.add('translate-y-0', 'opacity-100');
+            }, 10);
+        }
+
+        document.getElementById('customAlertBtn').addEventListener('click', function() {
+            const modal = document.getElementById('customAlertModal');
+            const box = document.getElementById('customAlertBox');
+            
+            box.classList.remove('translate-y-0', 'opacity-100');
+            box.classList.add('translate-y-4', 'opacity-0');
+            
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                if (alertRedirectUrl) {
+                    window.location.href = alertRedirectUrl;
+                }
+            }, 300);
+        });
+
+        // --- CATCH PHP SESSION ALERTS (From import_excel.php) ---
+        <?php if (isset($_SESSION['alert_message'])): ?>
+            document.addEventListener('DOMContentLoaded', () => {
+                showCustomAlert(
+                    "<?= addslashes($_SESSION['alert_title']) ?>", 
+                    "<?= addslashes($_SESSION['alert_message']) ?>", 
+                    "<?= addslashes($_SESSION['alert_type']) ?>"
+                );
+            });
+            <?php 
+            // Destroy the session variables so the alert doesn't show again on refresh
+            unset($_SESSION['alert_title']);
+            unset($_SESSION['alert_message']);
+            unset($_SESSION['alert_type']);
+            ?>
+        <?php endif; ?>
+
         // Sidebar Toggle Logic for Mobile Phones
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');

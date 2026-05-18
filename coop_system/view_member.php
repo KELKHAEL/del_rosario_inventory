@@ -1,9 +1,15 @@
 <?php 
+session_start(); // CRITICAL: Start the session to store our alert message
 include 'db.php'; 
 
 // Fetch the member ID from the URL
 if (!isset($_GET['id']) || empty($_GET['id'])) {
-    echo "<script>alert('Invalid Member ID'); window.location.href='index.php';</script>";
+    // Pass the error alert securely via PHP Session
+    $_SESSION['alert_title'] = "Invalid Access";
+    $_SESSION['alert_message'] = "No valid Member ID was provided.";
+    $_SESSION['alert_type'] = "error";
+    
+    header("Location: index.php");
     exit();
 }
 
@@ -16,7 +22,12 @@ $stmt->execute();
 $member_result = $stmt->get_result();
 
 if ($member_result->num_rows === 0) {
-    echo "<script>alert('Member not found!'); window.location.href='index.php';</script>";
+    // Pass the not found error alert securely via PHP Session
+    $_SESSION['alert_title'] = "Record Not Found";
+    $_SESSION['alert_message'] = "The requested member profile could not be found in the database.";
+    $_SESSION['alert_type'] = "error";
+    
+    header("Location: index.php");
     exit();
 }
 $member = $member_result->fetch_assoc();
