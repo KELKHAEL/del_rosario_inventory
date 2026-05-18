@@ -41,7 +41,7 @@
 
 <div id="globalSplashScreen" class="fixed inset-0 w-screen h-screen z-[9999] hidden flex-col items-center justify-center bg-black cursor-pointer overflow-hidden" onclick="hideSplashScreen()">
     
-    <div class="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat opacity-50 transform scale-105 transition-transform duration-[10000ms] ease-out" id="splashBg" style="background-image: url('img/cover-page.jpg');"></div>
+    <div class="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat opacity-90 transform scale-105 transition-transform duration-[10000ms] ease-out" id="splashBg" style="background-image: url('img/cover-page.jpg');"></div>
     
     <div class="absolute inset-0 bg-gradient-to-b from-purple-900/40 via-gray-900/60 to-black/90"></div>
     

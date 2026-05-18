@@ -30,7 +30,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
             $conn->query("INSERT INTO inventory_outsourcing (record_date, product_id, quantity_out, payment_method, receipt_no, buyer_name, buyer_contact) 
                           VALUES ('$date', $id, $qty, '$payment', '$receipt', '$buyer_name', '$buyer_contact')");
         }
-        // Flag for the success alert to trigger on page load
         $checkout_success = true;
     }
 }
@@ -69,16 +68,16 @@ if ($res_units) {
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
 
+    <?php include 'cover_page.php'; ?>
+
     <div id="customAlertModal" class="fixed inset-0 z-[1000] hidden items-center justify-center p-4">
         <div class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm transition-opacity"></div>
-        
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all z-10 flex flex-col translate-y-4 opacity-0" id="customAlertBox">
             <div id="customAlertHeader" class="px-6 py-4 flex items-center gap-3 border-b">
                 <i id="customAlertIcon" class="fas fa-exclamation-circle text-2xl"></i>
                 <h3 id="customAlertTitle" class="text-lg font-bold tracking-tight">Alert</h3>
             </div>
-            <div class="p-6 text-gray-600 text-sm leading-relaxed" id="customAlertMessage">
-                </div>
+            <div class="p-6 text-gray-600 text-sm leading-relaxed" id="customAlertMessage"></div>
             <div class="bg-gray-50 px-6 py-4 flex justify-end">
                 <button id="customAlertBtn" class="bg-primary hover:bg-primaryDark text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md">OK</button>
             </div>
@@ -91,7 +90,11 @@ if ($res_units) {
 
         <aside id="sidebar" class="bg-white w-72 border-r border-gray-200 flex flex-col transition-transform transform -translate-x-full md:translate-x-0 fixed md:relative z-50 h-full shadow-lg md:shadow-none">
             <div class="p-6 flex items-center justify-center border-b border-gray-100 relative">
-                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="w-40 md:w-52 h-auto object-contain py-2 drop-shadow-sm transition-transform hover:scale-105">
+                
+                <a href="#" onclick="showSplashScreen(); return false;" class="block">
+                    <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="w-40 md:w-52 h-auto object-contain py-2 drop-shadow-sm transition-transform hover:scale-105">
+                </a>
+
                 <button class="absolute top-4 right-4 md:hidden text-gray-400 hover:text-gray-800" onclick="toggleSidebar()">
                     <i class="fas fa-times text-xl"></i>
                 </button>
@@ -275,7 +278,6 @@ if ($res_units) {
             msgEl.innerHTML = message;
             alertRedirectUrl = redirectUrl;
 
-            // Style based on type (success or error)
             if (type === 'success') {
                 iconEl.className = 'fas fa-check-circle text-2xl text-green-500';
                 headerEl.className = 'px-6 py-4 flex items-center gap-3 border-b bg-green-50 border-green-100';
@@ -289,7 +291,6 @@ if ($res_units) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             
-            // Trigger animation
             setTimeout(() => {
                 box.classList.remove('translate-y-4', 'opacity-0');
                 box.classList.add('translate-y-0', 'opacity-100');
@@ -312,13 +313,11 @@ if ($res_units) {
             }, 300);
         });
 
-        // Trigger Success Alert from PHP if checkout was processed
         <?php if ($checkout_success): ?>
             document.addEventListener('DOMContentLoaded', () => {
                 showCustomAlert('Transaction Complete', 'The checkout was processed successfully. Inventory levels have been updated.', 'success', 'outsourcing_report.php');
             });
         <?php endif; ?>
-
 
         let cart = {};
         const allowNegativeStock = <?= $allow_negative ?> === 1;
@@ -391,7 +390,7 @@ if ($res_units) {
             cards.forEach(card => container.appendChild(card));
         }
 
-        // Cart Logic (Updated to use custom alerts)
+        // Cart Logic
         function addToCart(id, name, price, maxQty) {
             if (cart[id]) {
                 if (allowNegativeStock || cart[id].qty < maxQty) {
@@ -443,9 +442,9 @@ if ($res_units) {
                         </div>
                         <div class="flex flex-col items-end gap-2">
                             <div class="flex items-center border border-gray-300 rounded overflow-hidden h-8">
-                                <button onclick="updateQty(${id}, ${item.qty - 1})" class="px-2 bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors h-full"><i class="fas fa-minus text-xs"></i></button>
+                                <button type="button" onclick="updateQty(${id}, ${item.qty - 1})" class="px-2 bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors h-full"><i class="fas fa-minus text-xs"></i></button>
                                 <input type="number" value="${item.qty}" min="0" class="w-10 text-center text-sm font-bold outline-none h-full" onchange="updateQty(${id}, this.value)">
-                                <button onclick="updateQty(${id}, ${item.qty + 1})" class="px-2 bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors h-full"><i class="fas fa-plus text-xs"></i></button>
+                                <button type="button" onclick="updateQty(${id}, ${item.qty + 1})" class="px-2 bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors h-full"><i class="fas fa-plus text-xs"></i></button>
                             </div>
                             <div class="font-black text-gray-800">₱${itemTotal.toFixed(2)}</div>
                         </div>

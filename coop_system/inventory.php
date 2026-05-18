@@ -1,56 +1,70 @@
 <?php 
+session_start();
 include 'db.php'; 
 
-// 1. ADD / MERGE PRODUCT
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_product'])) {
-    $name = $conn->real_escape_string($_POST['product_name']);
-    $type = $conn->real_escape_string($_POST['product_type']);
-    $qty_type = $conn->real_escape_string($_POST['quantity_type']);
-    $qty = (int)$_POST['quantity'];
+// Fetch dynamic dropdown data
+$categories = [];
+$res_cat = $conn->query("SELECT name FROM config_product_categories ORDER BY name ASC");
+if($res_cat) { while($r = $res_cat->fetch_assoc()) { $categories[] = $r['name']; } }
+
+$unit_types = [];
+$res_units = $conn->query("SELECT name FROM config_unit_types ORDER BY name ASC");
+if($res_units) { while($r = $res_units->fetch_assoc()) { $unit_types[] = $r['name']; } }
+
+// Process Add/Edit/Delete Product
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    
+    if (isset($_POST['delete_product_id'])) {
+        $del_id = (int)$_POST['delete_product_id'];
+        $conn->query("DELETE FROM inventory WHERE product_id=$del_id");
+        $_SESSION['alert_title'] = "Item Deleted";
+        $_SESSION['alert_message'] = "The product has been permanently removed from the master inventory.";
+        $_SESSION['alert_type'] = "success";
+        header("Location: inventory.php");
+        exit();
+    }
+    
+    $product_name = $conn->real_escape_string($_POST['product_name']);
+    $product_type = $conn->real_escape_string($_POST['product_type']);
+    $quantity_type = $conn->real_escape_string($_POST['quantity_type']);
     $price = (float)$_POST['price'];
 
-    $check_sql = "SELECT product_id FROM inventory WHERE product_name='$name' AND product_type='$type' AND quantity_type='$qty_type'";
-    $check_res = $conn->query($check_sql);
-
-    if ($check_res && $check_res->num_rows > 0) {
-        $update_sql = "UPDATE inventory SET current_quantity = current_quantity + $qty, price = '$price' WHERE product_name='$name' AND product_type='$type' AND quantity_type='$qty_type'";
-        $conn->query($update_sql);
+    if (isset($_POST['product_id']) && !empty($_POST['product_id'])) {
+        // Edit existing product (Does NOT update quantity)
+        $id = (int)$_POST['product_id'];
+        $sql = "UPDATE inventory SET product_name='$product_name', product_type='$product_type', quantity_type='$quantity_type', price='$price' WHERE product_id=$id";
+        $conn->query($sql);
+        $_SESSION['alert_title'] = "Item Updated";
+        $_SESSION['alert_message'] = "The product information has been successfully updated.";
+        $_SESSION['alert_type'] = "success";
     } else {
-        $insert_sql = "INSERT INTO inventory (product_name, product_type, quantity_type, current_quantity, price) 
-                VALUES ('$name', '$type', '$qty_type', '$qty', '$price')";
-        $conn->query($insert_sql);
+        // Add completely new product
+        $current_quantity = (int)$_POST['current_quantity'];
+        $sql = "INSERT INTO inventory (product_name, product_type, quantity_type, current_quantity, price) 
+                VALUES ('$product_name', '$product_type', '$quantity_type', $current_quantity, '$price')";
+        $conn->query($sql);
+        $_SESSION['alert_title'] = "Item Added";
+        $_SESSION['alert_message'] = "A new product has been successfully added to the master inventory.";
+        $_SESSION['alert_type'] = "success";
     }
-    header("Location: inventory.php"); 
+    header("Location: inventory.php");
     exit();
 }
 
-// 2. EDIT PRODUCT
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['edit_product'])) {
-    $id = (int)$_POST['edit_id'];
-    $name = $conn->real_escape_string($_POST['edit_name']);
-    $qty = (int)$_POST['edit_qty'];
-    $price = (float)$_POST['edit_price'];
-
-    $conn->query("UPDATE inventory SET product_name='$name', current_quantity='$qty', price='$price' WHERE product_id=$id");
-    header("Location: inventory.php"); 
+// Process Stock Adjustment
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['adjust_stock_id'])) {
+    $adj_id = (int)$_POST['adjust_stock_id'];
+    $adj_amount = (int)$_POST['adjust_amount'];
+    
+    // We simply mathematically add the amount. If they pass a negative number, it will subtract it.
+    $conn->query("UPDATE inventory SET current_quantity = current_quantity + $adj_amount WHERE product_id=$adj_id");
+    
+    $_SESSION['alert_title'] = "Stock Adjusted";
+    $_SESSION['alert_message'] = "The inventory levels have been updated successfully.";
+    $_SESSION['alert_type'] = "success";
+    header("Location: inventory.php");
     exit();
 }
-
-// 3. DELETE PRODUCT
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['delete_product'])) {
-    $id = (int)$_POST['delete_id'];
-    $conn->query("DELETE FROM inventory WHERE product_id=$id");
-    header("Location: inventory.php"); 
-    exit();
-}
-
-// 4. SORTING LOGIC
-$sort_option = $_GET['sort'] ?? 'name_asc';
-$order_by = "product_type ASC, product_name ASC"; 
-
-if ($sort_option === 'qty_asc') $order_by = "product_type ASC, current_quantity ASC";
-if ($sort_option === 'qty_desc') $order_by = "product_type ASC, current_quantity DESC";
-if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
 ?>
 
 <!DOCTYPE html>
@@ -76,14 +90,121 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
     </script>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
+    
+    <?php include 'cover_page.php'; ?>
+
+    <div id="customAlertModal" class="fixed inset-0 z-[1000] hidden items-center justify-center p-4 print:hidden">
+        <div class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm transition-opacity"></div>
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all z-10 flex flex-col translate-y-4 opacity-0" id="customAlertBox">
+            <div id="customAlertHeader" class="px-6 py-4 flex items-center gap-3 border-b">
+                <i id="customAlertIcon" class="fas fa-exclamation-circle text-2xl"></i>
+                <h3 id="customAlertTitle" class="text-lg font-bold tracking-tight">Alert</h3>
+            </div>
+            <div class="p-6 text-gray-600 text-sm leading-relaxed" id="customAlertMessage"></div>
+            <div class="bg-gray-50 px-6 py-4 flex justify-end">
+                <button id="customAlertBtn" class="bg-primary hover:bg-primaryDark text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="adjustModal" class="fixed inset-0 z-[999] hidden items-center justify-center p-4 print:hidden">
+        <div class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm" onclick="closeAdjustModal()"></div>
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md z-10 overflow-hidden transform transition-all">
+            <div class="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                <h3 class="font-bold text-gray-800"><i class="fas fa-boxes text-primary mr-2"></i>Adjust Stock Level</h3>
+                <button onclick="closeAdjustModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            </div>
+            <form action="inventory.php" method="POST" class="p-6">
+                <input type="hidden" name="adjust_stock_id" id="adj_product_id">
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1" id="adj_product_name_display"></label>
+                    <div class="text-xs text-gray-500 mb-4">Current Stock: <span id="adj_current_stock" class="font-bold text-gray-800"></span></div>
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Adjustment Amount <span class="text-red-500">*</span></label>
+                    <input type="number" name="adjust_amount" placeholder="e.g. 5 or -3" required class="w-full rounded-md border border-gray-300 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                    <p class="text-xs text-gray-400 mt-1 italic">Use a positive number to add stock, and a negative number (e.g. -5) to subtract.</p>
+                </div>
+
+                <div class="flex gap-3 justify-end">
+                    <button type="button" onclick="closeAdjustModal()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm transition-colors">CANCEL</button>
+                    <button type="submit" class="bg-primary hover:bg-primaryDark text-white font-bold py-2 px-6 rounded-md text-sm transition-colors shadow-md">UPDATE STOCK</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="productModal" class="fixed inset-0 z-[999] hidden items-center justify-center p-4 print:hidden">
+        <div class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm" onclick="closeModal()"></div>
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg z-10 overflow-hidden transform transition-all">
+            <div class="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                <h3 class="font-bold text-gray-800" id="modalTitle"><i class="fas fa-plus-circle text-primary mr-2"></i>Add New Product</h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <form action="inventory.php" method="POST" class="p-6">
+                <input type="hidden" name="product_id" id="product_id">
+                
+                <div class="grid grid-cols-1 gap-5">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Product Name <span class="text-red-500">*</span></label>
+                        <input type="text" name="product_name" id="product_name" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Category / Type <span class="text-red-500">*</span></label>
+                            <select name="product_type" id="product_type" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all bg-white">
+                                <option value="">Select Category</option>
+                                <?php foreach($categories as $cat): ?>
+                                    <option value="<?= htmlspecialchars($cat) ?>"><?= htmlspecialchars($cat) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Unit of Measure <span class="text-red-500">*</span></label>
+                            <select name="quantity_type" id="quantity_type" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all bg-white">
+                                <option value="">Select Unit</option>
+                                <?php foreach($unit_types as $ut): ?>
+                                    <option value="<?= htmlspecialchars($ut) ?>"><?= htmlspecialchars($ut) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Price (PHP) <span class="text-red-500">*</span></label>
+                            <input type="number" step="0.01" name="price" id="price" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                        </div>
+                        <div id="initial_qty_group">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Initial Stock <span class="text-red-500">*</span></label>
+                            <input type="number" name="current_quantity" id="current_quantity" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex justify-end gap-3 border-t border-gray-100 pt-5">
+                    <button type="button" onclick="closeModal()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm transition-colors">CANCEL</button>
+                    <button type="submit" class="bg-primary hover:bg-primaryDark text-white font-bold py-2 px-6 rounded-md text-sm transition-colors shadow-md"><i class="fas fa-save mr-1"></i> SAVE PRODUCT</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <div class="flex h-screen w-full">
 
-        <div id="mobile-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-40 hidden md:hidden transition-opacity" onclick="toggleSidebar()"></div>
+        <div id="mobile-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-40 hidden md:hidden transition-opacity print:hidden" onclick="toggleSidebar()"></div>
 
         <aside id="sidebar" class="bg-white w-72 border-r border-gray-200 flex flex-col transition-transform transform -translate-x-full md:translate-x-0 fixed md:relative z-50 h-full shadow-lg md:shadow-none print:hidden">
             <div class="p-6 flex items-center justify-center border-b border-gray-100 relative">
-                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="w-40 md:w-52 h-auto object-contain py-2 drop-shadow-sm transition-transform hover:scale-105">
+                
+                <a href="#" onclick="showSplashScreen(); return false;" class="block">
+                    <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="w-40 md:w-52 h-auto object-contain py-2 drop-shadow-sm transition-transform hover:scale-105">
+                </a>
+
                 <button class="absolute top-4 right-4 md:hidden text-gray-400 hover:text-gray-800" onclick="toggleSidebar()">
                     <i class="fas fa-times text-xl"></i>
                 </button>
@@ -120,161 +241,121 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
                     </button>
                     <h1 class="text-xl md:text-2xl font-bold text-gray-800 tracking-tight">Master Inventory</h1>
                 </div>
-                <button onclick="window.print()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm flex items-center">
-                    <i class="fas fa-print mr-2"></i> PRINT
-                </button>
             </header>
 
             <div class="flex-1 overflow-y-auto p-4 md:p-8">
                 
+                <?php
+                // Fetch Stats
+                $stat_total = $conn->query("SELECT COUNT(*) as c FROM inventory")->fetch_assoc()['c'];
+                $stat_low = $conn->query("SELECT COUNT(*) as c FROM inventory WHERE current_quantity < 5")->fetch_assoc()['c'];
+                $stat_val = $conn->query("SELECT SUM(current_quantity * price) as v FROM inventory WHERE current_quantity > 0")->fetch_assoc()['v'];
+                ?>
+
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 print:hidden">
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
-                        <div class="text-sm font-semibold text-gray-500 mb-1 uppercase">Total Inventory Items</div>
-                        <div class="text-3xl font-bold text-primary">
-                            <?php 
-                            $res = $conn->query("SELECT SUM(current_quantity) as total FROM inventory WHERE current_quantity > 0");
-                            echo $res->fetch_assoc()['total'] ?? '0'; 
-                            ?>
+                    <div class="bg-white rounded-xl shadow-sm border border-purple-200 p-6 flex items-center justify-between border-l-4 border-l-primary">
+                        <div>
+                            <div class="text-sm font-semibold text-gray-500 uppercase mb-1">Total Products</div>
+                            <div class="text-3xl font-bold text-gray-800"><?= $stat_total ?></div>
                         </div>
+                        <div class="w-12 h-12 rounded-full bg-purple-50 flex items-center justify-center text-primary text-xl"><i class="fas fa-box"></i></div>
                     </div>
                     
-                    <div class="bg-white rounded-xl shadow-sm border border-red-200 p-6 flex flex-col bg-red-50">
-                        <div class="text-sm font-semibold text-red-500 mb-1 uppercase">Discrepancies (Negatives)</div>
-                        <div class="text-3xl font-bold text-red-700">
-                            <?php 
-                            $res = $conn->query("SELECT COUNT(*) as negs FROM inventory WHERE current_quantity < 0");
-                            echo $res->fetch_assoc()['negs'] ?? '0'; 
-                            ?>
+                    <div class="bg-white rounded-xl shadow-sm border border-red-200 p-6 flex items-center justify-between border-l-4 border-l-red-500">
+                        <div>
+                            <div class="text-sm font-semibold text-gray-500 uppercase mb-1">Low / Out of Stock</div>
+                            <div class="text-3xl font-bold <?= $stat_low > 0 ? 'text-red-600' : 'text-gray-800' ?>"><?= $stat_low ?></div>
                         </div>
+                        <div class="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-500 text-xl"><i class="fas fa-exclamation-triangle"></i></div>
                     </div>
 
-                    <div class="bg-white rounded-xl shadow-sm border border-green-200 p-6 flex flex-col bg-green-50">
-                        <div class="text-sm font-semibold text-green-600 mb-1 uppercase">Total Value (PHP)</div>
-                        <div class="text-3xl font-bold text-green-700">
-                            ₱<?php 
-                            $res = $conn->query("SELECT SUM(current_quantity * price) as val FROM inventory WHERE current_quantity > 0");
-                            echo number_format($res->fetch_assoc()['val'] ?? 0, 2); 
-                            ?>
+                    <div class="bg-white rounded-xl shadow-sm border border-green-200 p-6 flex items-center justify-between border-l-4 border-l-green-500">
+                        <div>
+                            <div class="text-sm font-semibold text-gray-500 uppercase mb-1">Est. Inventory Value</div>
+                            <div class="text-3xl font-bold text-gray-800">₱<?= number_format($stat_val, 2) ?></div>
                         </div>
+                        <div class="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-green-500 text-xl"><i class="fas fa-money-bill-wave"></i></div>
                     </div>
                 </div>
 
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8 print:hidden">
-                    <h4 class="text-lg font-bold text-gray-800 border-b border-gray-100 pb-3 mb-4">Add (IN) to Inventory</h4>
-                    <form action="inventory.php" method="POST" class="flex flex-col lg:flex-row gap-4 items-end">
-                        <div class="w-full lg:w-1/4">
-                            <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase">Product Name</label>
-                            <input type="text" name="product_name" placeholder="e.g., Premium Rice" required class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                        </div>
-                        <div class="w-full lg:w-1/5">
-                            <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase">Category</label>
-                            <input type="text" name="product_type" placeholder="e.g., Rice, Canned" required class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                        </div>
-                        <div class="w-full lg:w-32">
-                            <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase">Unit</label>
-                            <select name="quantity_type" required class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-white">
-                                <option value="Sack">Sack</option>
-                                <option value="Kilo">Kilo</option>
-                                <option value="Pieces">Pieces</option>
-                                <option value="Can">Can</option>
-                                <option value="Tray">Tray</option>
-                                <option value="Bottle">Bottle</option>
-                            </select>
-                        </div>
-                        <div class="w-full lg:w-24">
-                            <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase">Qty</label>
-                            <input type="number" name="quantity" value="1" required class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                        </div>
-                        <div class="w-full lg:w-32">
-                            <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase">Price (₱)</label>
-                            <input type="number" step="0.01" name="price" placeholder="0.00" required class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                        </div>
-                        <button type="submit" name="add_product" class="bg-primary hover:bg-primaryDark text-white font-semibold py-2 px-4 rounded-md text-sm transition-colors w-full lg:w-auto shadow-sm whitespace-nowrap">
-                            <i class="fas fa-plus mr-1"></i> ADD
+                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4 print:hidden">
+                    
+                    <div class="flex w-full lg:w-1/3 bg-white border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-all shadow-sm">
+                        <div class="px-3 py-2 text-gray-400 flex items-center justify-center"><i class="fas fa-search"></i></div>
+                        <input type="text" id="liveSearch" placeholder="Search Products, Categories..." class="w-full py-2 pr-4 outline-none text-sm text-gray-700 bg-transparent">
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                        <button onclick="openModal()" class="bg-primary hover:bg-primaryDark text-white font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto text-center whitespace-nowrap">
+                            <i class="fas fa-plus mr-2"></i>ADD PRODUCT
                         </button>
-                    </form>
+                        <button onclick="window.print()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto text-center border border-gray-300 whitespace-nowrap">
+                            <i class="fas fa-print mr-2"></i>PRINT INVENTORY
+                        </button>
+                    </div>
                 </div>
 
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                    <div class="bg-gray-50 px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <h4 class="font-bold text-gray-800">Current Stock Directory</h4>
-                        <form action="inventory.php" method="GET" class="flex items-center gap-2 text-sm print:hidden w-full sm:w-auto">
-                            <label class="font-semibold text-gray-500 whitespace-nowrap">Sort By:</label>
-                            <select name="sort" onchange="this.form.submit()" class="rounded-md border border-gray-300 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary bg-white w-full sm:w-auto">
-                                <option value="name_asc" <?= $sort_option == 'name_asc' ? 'selected' : '' ?>>Alphabetical (A-Z)</option>
-                                <option value="qty_desc" <?= $sort_option == 'qty_desc' ? 'selected' : '' ?>>Quantity (High to Low)</option>
-                                <option value="qty_asc" <?= $sort_option == 'qty_asc' ? 'selected' : '' ?>>Quantity (Low to High)</option>
-                                <option value="price_desc" <?= $sort_option == 'price_desc' ? 'selected' : '' ?>>Price (Highest First)</option>
-                            </select>
-                        </form>
-                    </div>
-
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm text-left text-gray-600 whitespace-nowrap">
                             <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
                                 <tr>
-                                    <th scope="col" class="px-6 py-4 font-bold tracking-wider">Product Name</th>
-                                    <th scope="col" class="px-6 py-4 font-bold tracking-wider">Price</th>
-                                    <th scope="col" class="px-6 py-4 font-bold tracking-wider">Current Stock</th>
-                                    <th scope="col" class="px-6 py-4 font-bold tracking-wider">Status</th>
-                                    <th scope="col" class="px-6 py-4 font-bold tracking-wider text-center print:hidden">Actions</th>
+                                    <th class="px-6 py-4 font-bold tracking-wider">Product Name</th>
+                                    <th class="px-6 py-4 font-bold tracking-wider">Category</th>
+                                    <th class="px-6 py-4 font-bold tracking-wider">Price (PHP)</th>
+                                    <th class="px-6 py-4 font-bold tracking-wider">Stock Status</th>
+                                    <th class="px-6 py-4 font-bold tracking-wider text-right print:hidden">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-gray-100">
+                            <tbody class="divide-y divide-gray-100" id="inventoryTableBody">
                                 <?php
-                                $sql = "SELECT * FROM inventory ORDER BY $order_by";
+                                $sql = "SELECT * FROM inventory ORDER BY product_name ASC";
                                 $result = $conn->query($sql);
 
                                 if ($result && $result->num_rows > 0) {
-                                    $current_category = "";
-
                                     while($row = $result->fetch_assoc()) {
                                         
-                                        // Grouping Logic
-                                        if ($current_category !== $row['product_type']) {
-                                            $current_category = $row['product_type'];
-                                            echo "<tr class='bg-gray-100/50'>
-                                                    <td colspan='5' class='px-6 py-3 font-bold text-gray-800 uppercase tracking-wider text-xs border-y border-gray-200'>" . htmlspecialchars($current_category) . "</td>
-                                                  </tr>";
-                                        }
-
-                                        $qty = $row['current_quantity'];
-                                        $unit = $row['quantity_type'];
-                                        
-                                        // Modern Status Badges
-                                        if ($qty < 0) {
-                                            $status = "<span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200'>NEGLECT/REVIEW</span>";
-                                        } elseif ($qty == 0) {
-                                            $status = "<span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200'>OUT OF STOCK</span>";
+                                        $stock = $row['current_quantity'];
+                                        if ($stock <= 0) {
+                                            $stockBadge = "<span class='inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-red-100 text-red-800 border border-red-200'><i class='fas fa-times-circle mr-1'></i> OUT OF STOCK ({$stock})</span>";
+                                            $rowBg = "bg-red-50/30"; // Very subtle red tint
+                                        } elseif ($stock < 5) {
+                                            $stockBadge = "<span class='inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-200'><i class='fas fa-exclamation-triangle mr-1'></i> LOW STOCK ({$stock})</span>";
+                                            $rowBg = "";
                                         } else {
-                                            $status = "<span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200'>IN STOCK</span>";
+                                            $stockBadge = "<span class='font-bold text-gray-800 text-base'>{$stock}</span> <span class='text-gray-400 text-xs ml-1'>" . htmlspecialchars($row['quantity_type']) . "s</span>";
+                                            $rowBg = "";
                                         }
 
-                                        echo "<tr class='hover:bg-purple-50 transition-colors'>
-                                                <td class='px-6 py-4 font-semibold text-gray-900'>" . htmlspecialchars($row['product_name']) . "</td>
-                                                <td class='px-6 py-4 font-medium'>₱" . number_format($row['price'], 2) . "</td>
-                                                <td class='px-6 py-4'><strong class='text-base text-primary'>{$qty}</strong> <span class='text-gray-400 ml-1'>{$unit}s</span></td>
-                                                <td class='px-6 py-4'>{$status}</td>
-                                                <td class='px-6 py-4 flex justify-center gap-2 print:hidden'>
+                                        echo "<tr class='inventory-row {$rowBg} hover:bg-purple-50 transition-colors'>
+                                                <td class='px-6 py-4 font-bold text-gray-900 capitalize'>" . htmlspecialchars($row['product_name']) . "</td>
+                                                <td class='px-6 py-4 text-xs font-semibold tracking-wider text-gray-500 uppercase'>" . htmlspecialchars($row['product_type']) . "</td>
+                                                <td class='px-6 py-4 font-semibold text-gray-700'>₱" . number_format($row['price'], 2) . "</td>
+                                                <td class='px-6 py-4'>{$stockBadge}</td>
+                                                <td class='px-6 py-4 text-right print:hidden'>
                                                     
-                                                    <button type='button' class='edit-btn bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 font-medium py-1 px-3 rounded shadow-sm text-xs transition-colors' 
-                                                        data-id='{$row['product_id']}' 
-                                                        data-name='" . htmlspecialchars($row['product_name'], ENT_QUOTES) . "' 
-                                                        data-qty='{$qty}' 
-                                                        data-price='{$row['price']}'>
-                                                        <i class='fas fa-edit text-blue-600 mr-1'></i> EDIT
-                                                    </button>
-                                                    
-                                                    <form action='inventory.php' method='POST' class='m-0' onsubmit='return confirm(\"Permanently delete " . htmlspecialchars($row['product_name'], ENT_QUOTES) . "?\");'>
-                                                        <input type='hidden' name='delete_id' value='{$row['product_id']}'>
-                                                        <button type='submit' name='delete_product' class='bg-white hover:bg-red-50 text-red-600 border border-red-200 font-medium py-1 px-3 rounded shadow-sm text-xs transition-colors'><i class='fas fa-trash-alt mr-1'></i> DEL</button>
-                                                    </form>
+                                                    <div class='flex justify-end gap-2'>
+                                                        <button onclick='openAdjustModal({$row['product_id']}, \"" . addslashes($row['product_name']) . "\", {$stock})' class='bg-white hover:bg-green-50 text-green-600 border border-green-200 font-semibold py-1 px-3 rounded shadow-sm text-xs transition-colors' title='Adjust Stock'>
+                                                            <i class='fas fa-plus-minus'></i> STOCK
+                                                        </button>
+
+                                                        <button onclick='editProduct({$row['product_id']}, \"" . addslashes($row['product_name']) . "\", \"" . addslashes($row['product_type']) . "\", \"" . addslashes($row['quantity_type']) . "\", {$row['price']})' class='bg-white hover:bg-blue-50 text-blue-600 border border-blue-200 font-semibold py-1 px-3 rounded shadow-sm text-xs transition-colors' title='Edit Details'>
+                                                            <i class='fas fa-edit'></i> EDIT
+                                                        </button>
+
+                                                        <form action='inventory.php' method='POST' class='m-0 inline-block' onsubmit='return confirm(\"Are you sure you want to completely delete this product? All logs related to it might lose reference.\");'>
+                                                            <input type='hidden' name='delete_product_id' value='{$row['product_id']}'>
+                                                            <button type='submit' class='bg-white hover:bg-red-50 text-red-600 border border-red-200 font-semibold py-1 px-3 rounded shadow-sm text-xs transition-colors' title='Delete Product'>
+                                                                <i class='fas fa-trash-alt'></i>
+                                                            </button>
+                                                        </form>
+                                                    </div>
 
                                                 </td>
                                               </tr>";
                                     }
                                 } else {
-                                    echo "<tr><td colspan='5' class='px-6 py-12 text-center text-gray-500'>No products in inventory. Add one above.</td></tr>";
+                                    echo "<tr><td colspan='5' class='px-6 py-12 text-center text-gray-500'>Inventory is empty. Click 'Add Product' to begin.</td></tr>";
                                 }
                                 ?>
                             </tbody>
@@ -286,44 +367,7 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
         </main>
     </div>
 
-    <div id="editModal" class="fixed inset-0 z-[100] hidden">
-        <div class="fixed inset-0 bg-gray-900 bg-opacity-50 backdrop-blur-sm transition-opacity" onclick="closeEditModal()"></div>
-        
-        <div class="fixed inset-0 z-10 flex items-center justify-center p-4">
-            <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
-                <div class="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-                    <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-edit text-primary mr-2"></i>Edit Product</h3>
-                    <button type="button" class="text-gray-400 hover:text-gray-800 transition-colors" onclick="closeEditModal()">
-                        <i class="fas fa-times text-xl"></i>
-                    </button>
-                </div>
-                
-                <form action="inventory.php" method="POST" class="p-6 flex flex-col gap-4">
-                    <input type="hidden" name="edit_id" id="modal_edit_id">
-                    
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">Product Name</label>
-                        <input type="text" name="edit_name" id="modal_edit_name" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">Current Stock Quantity</label>
-                        <input type="number" name="edit_qty" id="modal_edit_qty" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">Price (₱)</label>
-                        <input type="number" step="0.01" name="edit_price" id="modal_edit_price" required class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary">
-                    </div>
-                    
-                    <button type="submit" name="edit_product" class="mt-4 bg-primary hover:bg-primaryDark text-white font-bold py-3 rounded-lg shadow-md transition-colors w-full">
-                        SAVE CHANGES
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
-
     <script>
-        // Sidebar Toggle
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const overlay = document.getElementById('mobile-overlay');
@@ -331,28 +375,147 @@ if ($sort_option === 'price_desc') $order_by = "product_type ASC, price DESC";
             overlay.classList.toggle('hidden');
         }
 
-        // Modal Logic
-        const editModal = document.getElementById("editModal");
-        
-        function closeEditModal() {
-            editModal.classList.add('hidden');
-        }
+        // --- LIVE SEARCH ---
+        document.getElementById('liveSearch').addEventListener('keyup', function() {
+            let filter = this.value.toLowerCase();
+            let rows = document.querySelectorAll('.inventory-row');
 
-        document.querySelectorAll(".edit-btn").forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.getElementById('modal_edit_id').value = this.getAttribute('data-id');
-                document.getElementById('modal_edit_name').value = this.getAttribute('data-name');
-                document.getElementById('modal_edit_qty').value = this.getAttribute('data-qty');
-                document.getElementById('modal_edit_price').value = parseFloat(this.getAttribute('data-price')).toFixed(2);
-                
-                editModal.classList.remove('hidden');
+            rows.forEach(row => {
+                let text = row.textContent.toLowerCase();
+                row.style.display = text.includes(filter) ? '' : 'none';
             });
         });
 
-        // Auto format price
-        document.getElementById('modal_edit_price')?.addEventListener('blur', function() {
-            if (this.value) { this.value = parseFloat(this.value).toFixed(2); }
+        // --- PRODUCT MODAL LOGIC ---
+        function openModal() {
+            document.getElementById('modalTitle').innerHTML = '<i class="fas fa-plus-circle text-primary mr-2"></i>Add New Product';
+            document.getElementById('product_id').value = '';
+            document.getElementById('product_name').value = '';
+            document.getElementById('product_type').value = '';
+            document.getElementById('quantity_type').value = '';
+            document.getElementById('price').value = '';
+            
+            // Show initial stock input since it's a new product
+            const qtyGroup = document.getElementById('initial_qty_group');
+            qtyGroup.style.display = 'block';
+            document.getElementById('current_quantity').setAttribute('required', 'required');
+            document.getElementById('current_quantity').value = '';
+
+            document.getElementById('productModal').classList.remove('hidden');
+            document.getElementById('productModal').classList.add('flex');
+        }
+
+        function editProduct(id, name, type, qtyType, price) {
+            document.getElementById('modalTitle').innerHTML = '<i class="fas fa-edit text-blue-600 mr-2"></i>Edit Product Details';
+            document.getElementById('product_id').value = id;
+            document.getElementById('product_name').value = name;
+            document.getElementById('product_type').value = type;
+            document.getElementById('quantity_type').value = qtyType;
+            document.getElementById('price').value = price;
+
+            // Hide initial stock input (stock must be edited via the Adjust Stock button)
+            const qtyGroup = document.getElementById('initial_qty_group');
+            qtyGroup.style.display = 'none';
+            document.getElementById('current_quantity').removeAttribute('required');
+
+            document.getElementById('productModal').classList.remove('hidden');
+            document.getElementById('productModal').classList.add('flex');
+        }
+
+        function closeModal() {
+            document.getElementById('productModal').classList.add('hidden');
+            document.getElementById('productModal').classList.remove('flex');
+        }
+
+        // --- STOCK ADJUSTMENT MODAL LOGIC ---
+        function openAdjustModal(id, name, currentStock) {
+            document.getElementById('adj_product_id').value = id;
+            document.getElementById('adj_product_name_display').innerText = name.toUpperCase();
+            document.getElementById('adj_current_stock').innerText = currentStock;
+            
+            // Reset input
+            document.querySelector('input[name="adjust_amount"]').value = '';
+
+            document.getElementById('adjustModal').classList.remove('hidden');
+            document.getElementById('adjustModal').classList.add('flex');
+        }
+
+        function closeAdjustModal() {
+            document.getElementById('adjustModal').classList.add('hidden');
+            document.getElementById('adjustModal').classList.remove('flex');
+        }
+
+
+        // --- CUSTOM ALERT LOGIC ---
+        let alertRedirectUrl = null;
+
+        function showCustomAlert(title, message, type = 'error', redirectUrl = null) {
+            const modal = document.getElementById('customAlertModal');
+            const box = document.getElementById('customAlertBox');
+            const titleEl = document.getElementById('customAlertTitle');
+            const msgEl = document.getElementById('customAlertMessage');
+            const iconEl = document.getElementById('customAlertIcon');
+            const headerEl = document.getElementById('customAlertHeader');
+            const btnEl = document.getElementById('customAlertBtn');
+
+            titleEl.innerText = title;
+            msgEl.innerHTML = message;
+            alertRedirectUrl = redirectUrl;
+
+            if (type === 'success') {
+                iconEl.className = 'fas fa-check-circle text-2xl text-green-500';
+                headerEl.className = 'px-6 py-4 flex items-center gap-3 border-b bg-green-50 border-green-100';
+                btnEl.className = 'bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md';
+            } else if (type === 'info') {
+                iconEl.className = 'fas fa-info-circle text-2xl text-blue-500';
+                headerEl.className = 'px-6 py-4 flex items-center gap-3 border-b bg-blue-50 border-blue-100';
+                btnEl.className = 'bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md';
+            } else {
+                iconEl.className = 'fas fa-exclamation-circle text-2xl text-red-500';
+                headerEl.className = 'px-6 py-4 flex items-center gap-3 border-b bg-red-50 border-red-100';
+                btnEl.className = 'bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-md';
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            setTimeout(() => {
+                box.classList.remove('translate-y-4', 'opacity-0');
+                box.classList.add('translate-y-0', 'opacity-100');
+            }, 10);
+        }
+
+        document.getElementById('customAlertBtn').addEventListener('click', function() {
+            const modal = document.getElementById('customAlertModal');
+            const box = document.getElementById('customAlertBox');
+            
+            box.classList.remove('translate-y-0', 'opacity-100');
+            box.classList.add('translate-y-4', 'opacity-0');
+            
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                if (alertRedirectUrl) {
+                    window.location.href = alertRedirectUrl;
+                }
+            }, 300);
         });
+
+        // Catch Session Alerts
+        <?php if (isset($_SESSION['alert_message'])): ?>
+            document.addEventListener('DOMContentLoaded', () => {
+                showCustomAlert(
+                    "<?= addslashes($_SESSION['alert_title']) ?>", 
+                    "<?= addslashes($_SESSION['alert_message']) ?>", 
+                    "<?= addslashes($_SESSION['alert_type']) ?>"
+                );
+            });
+            <?php 
+            unset($_SESSION['alert_title']);
+            unset($_SESSION['alert_message']);
+            unset($_SESSION['alert_type']);
+            ?>
+        <?php endif; ?>
     </script>
 </body>
 </html>
