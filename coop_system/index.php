@@ -38,6 +38,8 @@ if ($countResult && $countResult->num_rows > 0) {
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
     
+    <?php include 'cover_page.php'; ?>
+
     <div id="customAlertModal" class="fixed inset-0 z-[1000] hidden items-center justify-center p-4">
         <div class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm transition-opacity"></div>
         
@@ -60,7 +62,11 @@ if ($countResult && $countResult->num_rows > 0) {
 
         <aside id="sidebar" class="bg-white w-72 border-r border-gray-200 flex flex-col transition-transform transform -translate-x-full md:translate-x-0 fixed md:relative z-50 h-full shadow-lg md:shadow-none">
             <div class="p-6 flex items-center justify-center border-b border-gray-100 relative">
-                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="w-40 md:w-52 h-auto object-contain py-2 drop-shadow-sm transition-transform hover:scale-105">
+                
+                <a href="#" onclick="showSplashScreen(); return false;" class="block">
+                    <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="w-40 md:w-52 h-auto object-contain py-2 drop-shadow-sm transition-transform hover:scale-105">
+                </a>
+                
                 <button class="absolute top-4 right-4 md:hidden text-gray-400 hover:text-gray-800" onclick="toggleSidebar()">
                     <i class="fas fa-times text-xl"></i>
                 </button>
@@ -151,7 +157,6 @@ if ($countResult && $countResult->num_rows > 0) {
                                         $full_name = htmlspecialchars($row['last_name'] . ", " . $row['first_name'] . " " . $row['middle_name']);
                                         $full_name = trim(str_replace('  ', ' ', $full_name));
 
-                                        // EDIT BUTTON UPDATED TO A LINK POINTING TO edit_member.php
                                         echo "<tr class='member-row hover:bg-purple-50 transition-colors'>
                                                 <td class='px-6 py-3.5 font-semibold text-gray-900'>{$display_id}</td>
                                                 <td class='px-6 py-3.5 capitalize font-medium text-gray-800'>{$full_name}</td>
