@@ -95,9 +95,9 @@
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4 print:hidden">
                     
                     <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
-                        <form action="#" method="POST" enctype="multipart/form-data" class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm items-center">
+                        <form action="import_transactions.php" method="POST" enctype="multipart/form-data" class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm items-center">
                             <input type="file" name="excel_file" accept=".xls,.xlsx" required class="block w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:font-semibold file:bg-purple-50 file:text-primary hover:file:bg-purple-100 transition cursor-pointer">
-                            <button type="button" onclick="showCustomAlert('Feature Pending', 'The Excel Parsing script for transactions will be connected here in a future update.', 'info')" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto whitespace-nowrap"><i class="fas fa-upload mr-1"></i> UPLOAD</button>
+                            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto whitespace-nowrap"><i class="fas fa-upload mr-1"></i> UPLOAD</button>
                         </form>
                     </div>
 
@@ -121,16 +121,15 @@
                         <table class="w-full text-sm text-left text-gray-600 whitespace-nowrap">
                             <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
                                 <tr>
-                                    <th class="px-6 py-4 font-bold tracking-wider">Transaction ID</th>
                                     <th class="px-6 py-4 font-bold tracking-wider">Date</th>
+                                    <th class="px-6 py-4 font-bold tracking-wider">Invoice / Ref</th>
                                     <th class="px-6 py-4 font-bold tracking-wider">Member Name</th>
-                                    <th class="px-6 py-4 font-bold tracking-wider">Transaction Type</th>
                                     <th class="px-6 py-4 font-bold tracking-wider text-right">Amount (PHP)</th>
+                                    <th class="px-6 py-4 font-bold tracking-wider text-center">Status</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100">
                                 <?php
-                                // Fetch all transactions from the database, ordered by newest first
                                 try {
                                     $sql = "SELECT * FROM transactions ORDER BY transaction_date DESC";
                                     $result = $conn->query($sql);
@@ -138,29 +137,29 @@
                                     if ($result && $result->num_rows > 0) {
                                         while($row = $result->fetch_assoc()) {
                                             
-                                            // Dynamic Tailwind Badges
-                                            if (strtoupper($row['transaction_type']) == 'SHARE') {
-                                                $badge = "<span class='inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-green-100 text-green-800 border border-green-200 uppercase'>" . htmlspecialchars($row['transaction_type']) . "</span>";
-                                            } else {
-                                                $badge = "<span class='inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200 uppercase'>" . htmlspecialchars($row['transaction_type']) . "</span>";
-                                            }
-                                            
                                             $date = date('M d, Y', strtotime($row['transaction_date']));
-                                            $tid = "#" . str_pad($row['transaction_id'], 5, '0', STR_PAD_LEFT);
+                                            $inv = !empty($row['invoice_no']) ? htmlspecialchars($row['invoice_no']) : 'N/A';
+                                            
+                                            $status = !empty($row['payment_status']) ? htmlspecialchars($row['payment_status']) : 'COMPLETED';
+                                            if (stripos($status, 'paid') !== false || stripos($status, 'completed') !== false) {
+                                                $stat_badge = "<span class='bg-green-100 text-green-800 px-2.5 py-1 rounded text-xs font-bold uppercase'>$status</span>";
+                                            } else {
+                                                $stat_badge = "<span class='bg-red-100 text-red-800 px-2.5 py-1 rounded text-xs font-bold uppercase'>$status</span>";
+                                            }
 
                                             echo "<tr class='hover:bg-purple-50 transition-colors'>
-                                                    <td class='px-6 py-4 font-mono font-medium text-gray-500'>{$tid}</td>
-                                                    <td class='px-6 py-4'>{$date}</td>
+                                                    <td class='px-6 py-4 font-medium text-gray-500'>{$date}</td>
+                                                    <td class='px-6 py-4 font-mono text-gray-700'>{$inv}</td>
                                                     <td class='px-6 py-4 font-bold text-gray-900 capitalize'>" . htmlspecialchars($row['member_name']) . "</td>
-                                                    <td class='px-6 py-4'>{$badge}</td>
                                                     <td class='px-6 py-4 font-bold text-gray-900 text-right'>₱" . number_format($row['amount'], 2) . "</td>
+                                                    <td class='px-6 py-4 text-center'>{$stat_badge}</td>
                                                   </tr>";
                                         }
                                     } else {
                                         echo "<tr><td colspan='5' class='px-6 py-12 text-center text-gray-500'>No transactions found. Upload an Excel file or add manually to begin.</td></tr>";
                                     }
                                 } catch (Exception $e) {
-                                    echo "<tr><td colspan='5' class='px-6 py-12 text-center text-red-500 italic'><i class='fas fa-exclamation-triangle mr-2'></i>Database table 'transactions' not yet configured.</td></tr>";
+                                    echo "<tr><td colspan='5' class='px-6 py-12 text-center text-red-500 italic'><i class='fas fa-exclamation-triangle mr-2'></i>Database table 'transactions' not yet configured. Upload a file to auto-configure.</td></tr>";
                                 }
                                 ?>
                             </tbody>
@@ -236,6 +235,21 @@
                 }
             }, 300);
         });
+
+        <?php if (isset($_SESSION['alert_message'])): ?>
+            document.addEventListener('DOMContentLoaded', () => {
+                showCustomAlert(
+                    "<?= addslashes($_SESSION['alert_title']) ?>", 
+                    "<?= addslashes($_SESSION['alert_message']) ?>", 
+                    "<?= addslashes($_SESSION['alert_type']) ?>"
+                );
+            });
+            <?php 
+            unset($_SESSION['alert_title']);
+            unset($_SESSION['alert_message']);
+            unset($_SESSION['alert_type']);
+            ?>
+        <?php endif; ?>
     </script>
 </body>
 </html>

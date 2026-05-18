@@ -1,14 +1,12 @@
 <?php 
-session_start(); // CRITICAL: Start the session to store our alert message
+session_start();
 include 'db.php'; 
 
 // Fetch the member ID from the URL
 if (!isset($_GET['id']) || empty($_GET['id'])) {
-    // Pass the error alert securely via PHP Session
     $_SESSION['alert_title'] = "Invalid Access";
     $_SESSION['alert_message'] = "No valid Member ID was provided.";
     $_SESSION['alert_type'] = "error";
-    
     header("Location: index.php");
     exit();
 }
@@ -22,11 +20,9 @@ $stmt->execute();
 $member_result = $stmt->get_result();
 
 if ($member_result->num_rows === 0) {
-    // Pass the not found error alert securely via PHP Session
     $_SESSION['alert_title'] = "Record Not Found";
     $_SESSION['alert_message'] = "The requested member profile could not be found in the database.";
     $_SESSION['alert_type'] = "error";
-    
     header("Location: index.php");
     exit();
 }
@@ -43,6 +39,21 @@ while($b_row = $beneficiaries_result->fetch_assoc()) {
     $beneficiaries[] = $b_row;
 }
 $stmt_ben->close();
+
+// 3. Fetch Transactions Data
+$member_transactions = [];
+try {
+    $stmt_t = $conn->prepare("SELECT * FROM transactions WHERE member_id = ? ORDER BY transaction_date DESC");
+    if ($stmt_t) {
+        $stmt_t->bind_param("i", $member_id);
+        $stmt_t->execute();
+        $trans_result = $stmt_t->get_result();
+        while($t_row = $trans_result->fetch_assoc()) {
+            $member_transactions[] = $t_row;
+        }
+        $stmt_t->close();
+    }
+} catch (Exception $e) { /* Table might not be upgraded yet */ }
 
 // Formatted Data
 $formatted_id = !empty($member['form_id']) ? htmlspecialchars($member['form_id']) : '';
@@ -75,7 +86,6 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
         .a4-paper {
             width: 210mm;
             min-height: 297mm;
-            margin: 0 auto;
             background: white;
             padding: 15mm;
             box-shadow: 0 10px 25px rgba(0,0,0,0.15);
@@ -84,20 +94,29 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
             position: relative;
         }
 
-        .coop-header-container { position: relative; padding-bottom: 20px; margin-bottom: 20px; border-bottom: 2px solid #000; min-height: 100px; display: flex; align-items: center; justify-content: center; }
+        .coop-header-container { 
+            position: relative; 
+            padding-bottom: 10px; 
+            margin-bottom: 20px; 
+            border-bottom: 2px solid #000; 
+            min-height: 110px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+        }
         .coop-header-logo { position: absolute; left: 0; top: 0; width: 85px; height: auto; }
         .coop-header-text { text-align: center; }
         .coop-header-text h2 { margin: auto; font-family: Arial, sans-serif; font-size: 15px; font-weight: 800; text-transform: uppercase; }
         .coop-header-text h5 { margin: 2px 0; font-size: 11px; font-weight: normal; }
         .photo-box { position: absolute; right: 0; top: 0; width: 1in; height: 1in; border: 1px solid #000; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #555; text-align: center; }
         
-        .title-block { text-align: center; margin-top: 20px; margin-bottom: 10px; position: relative; }
+        .title-block { text-align: center; margin-top: 10px; margin-bottom: 15px; position: relative; }
         .form-no-text { position: absolute; left: 0; top: 0; font-weight: bold; font-size: 14px; text-align: left; }
         .form-id-display { text-decoration: underline; font-weight: normal; display: inline-block; min-width: 80px; }
         .title-block h3 { margin: 0; font-size: 20px; letter-spacing: 1px; text-decoration: underline; }
 
         .section-header { background-color: #570591; color: white; padding: 5px 10px; font-size: 14px; font-weight: bold; text-transform: uppercase; margin-top: 20px;}
-        .form-row { display: flex; border-left: 1px solid #000; border-bottom: 1px solid #000; border-right: 1px solid #000; }
+        .form-row { display: flex; border-left: 1px solid #000; border-bottom: 1px solid #000; border-right: 1px solid #000; page-break-inside: avoid; }
         .form-row:first-of-type { border-top: 1px solid #000; }
         .form-col { flex: 1; padding: 5px 8px; border-right: 1px solid #000; display: flex; flex-direction: column; }
         .form-col:last-child { border-right: none; }
@@ -107,32 +126,53 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
         .paper-table { width: 100%; border-collapse: collapse; margin-top: 5px; border: 1px solid #000;}
         .paper-table th, .paper-table td { border: 1px solid #000; padding: 6px; text-align: left; font-size: 12px; }
         .paper-table th { background-color: #f0f0f0; text-transform: uppercase; font-size: 10px; }
+        .paper-table tr { page-break-inside: avoid; }
 
-        .certification-section { margin-top: 40px; font-size: 14px; }
-        .certification-text { text-indent: 40px; line-height: 1.6; margin-bottom: 50px; }
+        .certification-section { margin-top: 40px; font-size: 14px; page-break-inside: avoid; }
+        .certification-text { text-indent: 40px; line-height: 1.6; margin-bottom: 40px; }
         .signature-wrapper { display: flex; justify-content: flex-end; }
         .sig-box { width: 300px; text-align: center; }
         .sig-line { border-bottom: 1px solid #000; height: 20px; margin-bottom: 5px; }
         .sig-label { font-size: 12px; font-weight: bold; text-transform: uppercase; }
 
-        /* HIDE UI ELEMENTS WHEN PRINTING */
+        /* HIDE UI ELEMENTS & PREVENT BLANK PAGES WHEN PRINTING */
         @media print {
-            body, html { background: white !important; margin: 0 !important; padding: 0 !important; }
+            @page { size: A4 portrait; margin: 15mm; }
+
+            body, html { background: white !important; margin: 0 !important; padding: 0 !important; height: auto !important; }
             .no-print { display: none !important; }
-            .main-content { padding: 0 !important; margin: 0 !important; overflow: visible !important; height: auto !important;}
-            .scroll-wrapper { overflow: visible !important; background: white !important; padding: 0 !important; }
+            
+            .h-screen { height: auto !important; min-height: auto !important; }
+            .main-content, .scroll-wrapper { 
+                padding: 0 !important; 
+                margin: 0 !important; 
+                overflow: visible !important; 
+                height: auto !important; 
+                min-height: auto !important;
+                display: block !important; 
+            }
+            
             .a4-paper { 
                 width: 100% !important; 
                 margin: 0 !important; 
                 padding: 0 !important; 
+                min-height: 0 !important; 
                 box-shadow: none !important; 
                 border: none !important; 
             }
-            @page { size: portrait; margin: 10mm; }
+
+            .section-header { margin-top: 15px; font-size: 12px; padding: 4px 8px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .form-col { padding: 4px 6px; }
+            .field-value { font-size: 12px; min-height: 14px; }
+            .paper-table th, .paper-table td { padding: 4px; font-size: 11px; }
+            .certification-section { margin-top: 30px; font-size: 13px; }
+            .certification-text { margin-bottom: 30px; }
         }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 font-sans antialiased overflow-hidden">
+
+    <?php include 'cover_page.php'; ?>
 
     <div class="flex h-screen w-full">
 
@@ -140,7 +180,11 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
 
         <aside id="sidebar" class="bg-white w-72 border-r border-gray-200 flex flex-col transition-transform transform -translate-x-full md:translate-x-0 fixed md:relative z-50 h-full shadow-lg md:shadow-none no-print">
             <div class="p-6 flex items-center justify-center border-b border-gray-100 relative">
-                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="w-40 md:w-52 h-auto object-contain py-2 drop-shadow-sm transition-transform hover:scale-105">
+                
+                <a href="#" onclick="showSplashScreen(); return false;" class="block">
+                    <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="w-40 md:w-52 h-auto object-contain py-2 drop-shadow-sm transition-transform hover:scale-105">
+                </a>
+
                 <button class="absolute top-4 right-4 md:hidden text-gray-400 hover:text-gray-800" onclick="toggleSidebar()">
                     <i class="fas fa-times text-xl"></i>
                 </button>
@@ -188,104 +232,165 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
                 </div>
             </header>
 
-            <div class="scroll-wrapper flex-1 overflow-auto p-4 md:p-8 bg-gray-200 flex justify-center">
+            <div class="scroll-wrapper flex-1 overflow-auto p-4 md:p-8 bg-gray-200 block">
                 
-                <div class="a4-paper">
+                <div class="flex flex-col xl:flex-row gap-8 justify-center items-start w-full max-w-[1400px] mx-auto">
                     
-                    <div class="coop-header-container">
-                        <img src="img/purplearmy_logo-removebg.png" alt="Purple Army Logo" class="coop-header-logo">
-                        
-                        <div class="coop-header-text">
-                            <h2>PURPLE ARMY CONSUMERS COOPERATIVE</h2>
-                            <h5>428 A Soriano Highway, Amaya II, Tanza, Cavite</h5>
-                            <h5>purplearmycooperative@gmail.com</h5>
-                            <h5>09338243704/09569447343</h5>
-                        </div>
-                        
-                        <div class="photo-box">1" x 1"<br>Photo</div>
-                    </div>
+                    <div class="overflow-x-auto w-full xl:w-auto flex justify-center print:w-full">
+                        <div class="a4-paper m-0 shrink-0">
+                            
+                            <div class="coop-header-container">
+                                <img src="img/purplearmy_logo-removebg.png" alt="Purple Army Logo" class="coop-header-logo">
+                                
+                                <div class="coop-header-text">
+                                    <h2>PURPLE ARMY CONSUMERS COOPERATIVE</h2>
+                                    <h5>428 A Soriano Highway, Amaya II, Tanza, Cavite</h5>
+                                    <h5>purplearmycooperative@gmail.com</h5>
+                                    <h5>09338243704/09569447343</h5>
+                                </div>
+                                
+                                <div class="photo-box">1" x 1"<br>Photo</div>
+                            </div>
 
-                    <div class="title-block">
-                        <div class="form-no-text">Form No. <span class="form-id-display"><?= $formatted_id ?></span></div>
-                        <h3>MEMBERSHIP PROFILE</h3>
-                    </div>
+                            <div class="title-block">
+                                <div class="form-no-text">Form No. <span class="form-id-display"><?= $formatted_id ?></span></div>
+                                <h3>MEMBERSHIP PROFILE</h3>
+                            </div>
 
-                    <div class="section-header">I. Personal Information</div>
-                    <div class="form-row" style="border-top: 1px solid #000;">
-                        <div class="form-col"><span class="field-label">Last Name (Surname)</span><span class="field-value"><?= htmlspecialchars($member['last_name']) ?></span></div>
-                        <div class="form-col"><span class="field-label">First Name</span><span class="field-value"><?= htmlspecialchars($member['first_name']) ?></span></div>
-                        <div class="form-col"><span class="field-label">Middle Name</span><span class="field-value"><?= htmlspecialchars($member['middle_name']) ?></span></div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-col"><span class="field-label">Date of Birth</span><span class="field-value"><?= $dob ?></span></div>
-                        <div class="form-col" style="flex: 1.5;"><span class="field-label">Birth Place</span><span class="field-value"><?= htmlspecialchars($member['birth_place']) ?></span></div>
-                        <div class="form-col"><span class="field-label">Civil Status</span><span class="field-value"><?= htmlspecialchars($member['civil_status']) ?></span></div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-col"><span class="field-label">Religion</span><span class="field-value"><?= htmlspecialchars($member['religion']) ?></span></div>
-                        <div class="form-col"><span class="field-label">Sex</span><span class="field-value"><?= htmlspecialchars($member['sex']) ?></span></div>
-                        <div class="form-col"><span class="field-label">Tribe</span><span class="field-value"><?= htmlspecialchars($member['tribe']) ?></span></div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-col"><span class="field-label">SSS / GSIS No.</span><span class="field-value"><?= htmlspecialchars($member['sss_gsis_no']) ?></span></div>
-                        <div class="form-col"><span class="field-label">TIN No.</span><span class="field-value"><?= htmlspecialchars($member['tin_no']) ?></span></div>
-                        <div class="form-col"><span class="field-label">Postal Code</span><span class="field-value"><?= htmlspecialchars($member['postal_code']) ?></span></div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-col"><span class="field-label">Address</span><span class="field-value"><?= htmlspecialchars($member['address']) ?></span></div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-col"><span class="field-label">Business / Office Address</span><span class="field-value"><?= htmlspecialchars($member['business_office_address']) ?></span></div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-col"><span class="field-label">Educational Attainment</span><span class="field-value"><?= htmlspecialchars($member['educational_attainment']) ?></span></div>
-                        <div class="form-col"><span class="field-label">Present Employment / Business Activities</span><span class="field-value"><?= htmlspecialchars($member['present_employment_business']) ?></span></div>
-                    </div>
+                            <div class="section-header">I. Personal Information</div>
+                            <div class="form-row" style="border-top: 1px solid #000;">
+                                <div class="form-col"><span class="field-label">Last Name (Surname)</span><span class="field-value"><?= htmlspecialchars($member['last_name']) ?></span></div>
+                                <div class="form-col"><span class="field-label">First Name</span><span class="field-value"><?= htmlspecialchars($member['first_name']) ?></span></div>
+                                <div class="form-col"><span class="field-label">Middle Name</span><span class="field-value"><?= htmlspecialchars($member['middle_name'] ?? '') ?></span></div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-col"><span class="field-label">Date of Birth</span><span class="field-value"><?= $dob ?></span></div>
+                                <div class="form-col" style="flex: 1.5;"><span class="field-label">Birth Place</span><span class="field-value"><?= htmlspecialchars($member['birth_place'] ?? '') ?></span></div>
+                                <div class="form-col"><span class="field-label">Civil Status</span><span class="field-value"><?= htmlspecialchars($member['civil_status'] ?? '') ?></span></div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-col"><span class="field-label">Religion</span><span class="field-value"><?= htmlspecialchars($member['religion'] ?? '') ?></span></div>
+                                <div class="form-col"><span class="field-label">Sex</span><span class="field-value"><?= htmlspecialchars($member['sex'] ?? '') ?></span></div>
+                                <div class="form-col"><span class="field-label">Tribe</span><span class="field-value"><?= htmlspecialchars($member['tribe'] ?? '') ?></span></div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-col"><span class="field-label">SSS / GSIS No.</span><span class="field-value"><?= htmlspecialchars($member['sss_gsis_no'] ?? '') ?></span></div>
+                                <div class="form-col"><span class="field-label">TIN No.</span><span class="field-value"><?= htmlspecialchars($member['tin_no'] ?? '') ?></span></div>
+                                <div class="form-col"><span class="field-label">Postal Code</span><span class="field-value"><?= htmlspecialchars($member['postal_code'] ?? '') ?></span></div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-col"><span class="field-label">Address</span><span class="field-value"><?= htmlspecialchars($member['address'] ?? '') ?></span></div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-col"><span class="field-label">Business / Office Address</span><span class="field-value"><?= htmlspecialchars($member['business_office_address'] ?? '') ?></span></div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-col"><span class="field-label">Educational Attainment</span><span class="field-value"><?= htmlspecialchars($member['educational_attainment'] ?? '') ?></span></div>
+                                <div class="form-col"><span class="field-label">Present Employment / Business Activities</span><span class="field-value"><?= htmlspecialchars($member['present_employment_business'] ?? '') ?></span></div>
+                            </div>
 
-                    <div class="section-header">II. Beneficiaries</div>
-                    <table class="paper-table">
-                        <thead>
-                            <tr>
-                                <th>Last Name</th>
-                                <th>First Name</th>
-                                <th>M.I.</th>
-                                <th>Date of Birth</th>
-                                <th>Relationship</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (count($beneficiaries) > 0): ?>
-                                <?php foreach($beneficiaries as $ben): ?>
+                            <div class="section-header">II. Beneficiaries</div>
+                            <table class="paper-table">
+                                <thead>
                                     <tr>
-                                        <td><strong><?= htmlspecialchars($ben['last_name']) ?></strong></td>
-                                        <td><strong><?= htmlspecialchars($ben['first_name']) ?></strong></td>
-                                        <td><strong><?= htmlspecialchars($ben['middle_name'] ?? '') ?></strong></td>
-                                        <td><strong><?= !empty($ben['date_of_birth']) ? date('M d, Y', strtotime($ben['date_of_birth'])) : '' ?></strong></td>
-                                        <td><strong><?= htmlspecialchars($ben['relationship']) ?></strong></td>
+                                        <th>Last Name</th>
+                                        <th>First Name</th>
+                                        <th>M.I.</th>
+                                        <th>Date of Birth</th>
+                                        <th>Relationship</th>
                                     </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (count($beneficiaries) > 0): ?>
+                                        <?php foreach($beneficiaries as $ben): ?>
+                                            <tr>
+                                                <td><strong><?= htmlspecialchars($ben['last_name']) ?></strong></td>
+                                                <td><strong><?= htmlspecialchars($ben['first_name']) ?></strong></td>
+                                                <td><strong><?= htmlspecialchars($ben['middle_name'] ?? '') ?></strong></td>
+                                                <td><strong><?= !empty($ben['date_of_birth']) ? date('M d, Y', strtotime($ben['date_of_birth'])) : '' ?></strong></td>
+                                                <td><strong><?= htmlspecialchars($ben['relationship'] ?? '') ?></strong></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <tr><td colspan="5" style="text-align: center; color: #888;">No beneficiaries listed.</td></tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+
+                            <div class="section-header">III. Occupation & Income</div>
+                            <div class="form-row" style="border-top: 1px solid #000;">
+                                <div class="form-col"><span class="field-label">Occupation</span><span class="field-value"><?= htmlspecialchars($member['occupation'] ?? '') ?></span></div>
+                                <div class="form-col"><span class="field-label">Monthly Income</span><span class="field-value"><?= htmlspecialchars($member['monthly_income'] ?? '') ?></span></div>
+                            </div>
+
+                            <div class="certification-section">
+                                <p class="certification-text">
+                                    I hereby certify that the above information is true and correct, signed this ____ day of __________________ , _______.
+                                </p>
+                                <div class="signature-wrapper">
+                                    <div class="sig-box">
+                                        <div class="sig-line"></div>
+                                        <div class="sig-label">Signature over printed name</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <div class="w-full xl:w-[450px] shrink-0 bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden no-print xl:sticky xl:top-8 mb-12">
+                        
+                        <div class="bg-primary text-white p-5 flex justify-between items-center shadow-md relative z-10">
+                            <div>
+                                <h4 class="font-bold text-lg"><i class="fas fa-receipt mr-2"></i> Transaction History</h4>
+                                <p class="text-purple-200 text-xs mt-1 capitalize"><?= htmlspecialchars($member['first_name'] . ' ' . $member['last_name']) ?></p>
+                            </div>
+                            <span class="bg-purple-800 text-white px-3 py-1 rounded-full text-xs font-bold border border-purple-600 shadow-inner"><?= count($member_transactions) ?> Records</span>
+                        </div>
+
+                        <div class="p-5 max-h-[70vh] overflow-y-auto flex flex-col gap-4 bg-gray-50">
+                            <?php if (count($member_transactions) > 0): ?>
+                                <?php foreach($member_transactions as $trans): ?>
+                                    <?php 
+                                        $status = !empty($trans['payment_status']) ? htmlspecialchars($trans['payment_status']) : 'COMPLETED';
+                                        if (stripos($status, 'paid') !== false || stripos($status, 'completed') !== false) {
+                                            $stat_badge = "<span class='bg-green-100 text-green-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase border border-green-200'>$status</span>";
+                                        } else {
+                                            $stat_badge = "<span class='bg-red-100 text-red-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase border border-red-200'>$status</span>";
+                                        }
+                                    ?>
+                                    <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                                        <div class="flex justify-between items-start mb-3 pb-3 border-b border-gray-100">
+                                            <div>
+                                                <div class="text-xs text-gray-500 font-bold uppercase"><i class="far fa-calendar-alt mr-1"></i> <?= date('M d, Y', strtotime($trans['transaction_date'])) ?></div>
+                                                <div class="text-sm font-mono text-primary font-bold mt-1">INV: <?= htmlspecialchars($trans['invoice_no'] ?? 'N/A') ?></div>
+                                            </div>
+                                            <?= $stat_badge ?>
+                                        </div>
+                                        
+                                        <div class="text-xs text-gray-700 font-mono leading-relaxed mb-4 bg-gray-50 p-2.5 rounded border border-gray-100">
+                                            <?= nl2br(htmlspecialchars($trans['items_details'] ?? $trans['transaction_type'])) ?>
+                                        </div>
+                                        
+                                        <div class="flex justify-between items-end">
+                                            <div class="text-[11px] text-gray-500 leading-tight">
+                                                Downpayment: ₱<?= number_format($trans['downpayment'] ?? 0, 2) ?><br>
+                                                <span class="<?= ($trans['remaining_balance'] > 0) ? 'text-red-500 font-bold' : 'text-gray-500' ?>">Balance: ₱<?= number_format($trans['remaining_balance'] ?? 0, 2) ?></span>
+                                            </div>
+                                            <div class="text-lg font-black text-gray-900">
+                                                ₱<?= number_format($trans['amount'], 2) ?>
+                                            </div>
+                                        </div>
+                                    </div>
                                 <?php endforeach; ?>
                             <?php else: ?>
-                                <tr><td colspan="5" style="text-align: center; color: #888;">No beneficiaries listed.</td></tr>
+                                <div class="text-center py-12 flex flex-col items-center justify-center opacity-50">
+                                    <i class="fas fa-folder-open text-4xl text-gray-400 mb-3"></i>
+                                    <p class="text-sm text-gray-500 font-medium">No recorded transactions found.</p>
+                                </div>
                             <?php endif; ?>
-                        </tbody>
-                    </table>
-
-                    <div class="section-header">III. Occupation & Income</div>
-                    <div class="form-row" style="border-top: 1px solid #000;">
-                        <div class="form-col"><span class="field-label">Occupation</span><span class="field-value"><?= htmlspecialchars($member['occupation']) ?></span></div>
-                        <div class="form-col"><span class="field-label">Monthly Income</span><span class="field-value"><?= htmlspecialchars($member['monthly_income']) ?></span></div>
-                    </div>
-
-                    <div class="certification-section">
-                        <p class="certification-text">
-                            I hereby certify that the above information is true and correct, signed this ____ day of __________________ , _______.
-                        </p>
-                        <div class="signature-wrapper">
-                            <div class="sig-box">
-                                <div class="sig-line"></div>
-                                <div class="sig-label">Signature over printed name</div>
-                            </div>
                         </div>
+
                     </div>
 
                 </div>

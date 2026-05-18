@@ -146,7 +146,8 @@ if ($countResult && $countResult->num_rows > 0) {
                             </thead>
                             <tbody class="divide-y divide-gray-100">
                                 <?php
-                                $sql = "SELECT * FROM members ORDER BY member_id DESC";
+                                // SORT BY FORM ID (Numerically), then fallback to member_id if form_id is blank
+                                $sql = "SELECT * FROM members ORDER BY CAST(form_id AS UNSIGNED) ASC, member_id DESC";
                                 $result = $conn->query($sql);
 
                                 if ($result && $result->num_rows > 0) {

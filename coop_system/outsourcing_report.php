@@ -92,13 +92,19 @@ if ($result && $result->num_rows > 0) {
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
 
+    <?php include 'cover_page.php'; ?>
+
     <div class="flex h-screen w-full">
 
         <div id="mobile-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-40 hidden md:hidden transition-opacity print:hidden" onclick="toggleSidebar()"></div>
 
         <aside id="sidebar" class="bg-white w-72 border-r border-gray-200 flex flex-col transition-transform transform -translate-x-full md:translate-x-0 fixed md:relative z-50 h-full shadow-lg md:shadow-none print:hidden">
             <div class="p-6 flex items-center justify-center border-b border-gray-100 relative">
-                <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="w-40 md:w-52 h-auto object-contain py-2 drop-shadow-sm transition-transform hover:scale-105">
+                
+                <a href="#" onclick="showSplashScreen(); return false;" class="block">
+                    <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="w-40 md:w-52 h-auto object-contain py-2 drop-shadow-sm transition-transform hover:scale-105">
+                </a>
+
                 <button class="absolute top-4 right-4 md:hidden text-gray-400 hover:text-gray-800" onclick="toggleSidebar()">
                     <i class="fas fa-times text-xl"></i>
                 </button>

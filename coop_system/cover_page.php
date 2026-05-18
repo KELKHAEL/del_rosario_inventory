@@ -39,25 +39,25 @@
     }
 </style>
 
-<div id="globalSplashScreen" class="fixed inset-0 w-screen h-screen z-[9999] hidden flex-col items-center justify-center bg-black cursor-pointer overflow-hidden" onclick="hideSplashScreen()">
+<div id="globalSplashScreen" class="fixed inset-0 w-screen min-h-screen z-[9999] hidden flex-col items-center justify-center bg-black cursor-pointer overflow-hidden" onclick="hideSplashScreen()">
     
-    <div class="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat opacity-90 transform scale-105 transition-transform duration-[10000ms] ease-out" id="splashBg" style="background-image: url('img/cover-page.jpg');"></div>
+    <div class="absolute inset-0 w-full h-full bg-cover bg-[center_top] md:bg-center bg-no-repeat opacity-50 transform scale-105 transition-transform duration-[10000ms] ease-out" id="splashBg" style="background-image: url('img/cover-page.jpg');"></div>
     
     <div class="absolute inset-0 bg-gradient-to-b from-purple-900/40 via-gray-900/60 to-black/90"></div>
     
-    <div class="relative z-10 flex flex-col items-center text-center px-6 w-full max-w-5xl" id="splashContent">
+    <div class="relative z-10 flex flex-col items-center text-center px-4 md:px-6 w-full max-w-5xl" id="splashContent">
         
-        <img src="img/purplearmy_logo-removebg.png" alt="Purple Army Logo" class="w-48 md:w-64 lg:w-72 drop-shadow-[0_0_30px_rgba(106,27,154,0.8)] mb-8">
+        <img src="img/purplearmy_logo-removebg.png" alt="Purple Army Logo" class="w-40 sm:w-48 md:w-64 lg:w-72 drop-shadow-[0_0_30px_rgba(106,27,154,0.8)] mb-6 md:mb-8">
         
-        <h1 class="text-5xl md:text-7xl lg:text-8xl font-black text-white mb-2" style="font-family: 'Inter', sans-serif; text-shadow: 0 4px 10px rgba(0,0,0,0.8);">
+        <h1 class="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-black text-white mb-1 md:mb-2 whitespace-nowrap" style="font-family: 'Inter', sans-serif; text-shadow: 0 4px 10px rgba(0,0,0,0.8);">
             PURPLE ARMY
         </h1>
         
-        <h2 class="text-xl md:text-3xl lg:text-4xl font-bold text-purple-300 mb-16 uppercase" style="text-shadow: 0 2px 5px rgba(0,0,0,0.9);">
+        <h2 class="text-lg sm:text-xl md:text-3xl lg:text-4xl font-bold text-purple-300 mb-12 md:mb-16 uppercase whitespace-nowrap" style="text-shadow: 0 2px 5px rgba(0,0,0,0.9);">
             Consumers Cooperative
         </h2>
         
-        <p class="text-gray-300 text-sm md:text-base lg:text-lg font-medium italic drop-shadow-md">
+        <p class="text-gray-300 text-xs sm:text-sm md:text-base lg:text-lg font-medium italic drop-shadow-md px-4">
             - click anywhere on the screen to access the system -
         </p>
     </div>
@@ -88,12 +88,12 @@
         const h2 = splashContent.querySelector('h2');
         const prompt = splashContent.querySelector('p');
 
-        logo.className = "w-48 md:w-64 lg:w-72 drop-shadow-[0_0_30px_rgba(106,27,154,0.8)] mb-8";
-        h1.className = "text-5xl md:text-7xl lg:text-8xl font-black text-white mb-2";
+        logo.className = "w-40 sm:w-48 md:w-64 lg:w-72 drop-shadow-[0_0_30px_rgba(106,27,154,0.8)] mb-6 md:mb-8";
+        h1.className = "text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-black text-white mb-1 md:mb-2 whitespace-nowrap";
         h1.style.textShadow = "0 4px 10px rgba(0,0,0,0.8)";
-        h2.className = "text-xl md:text-3xl lg:text-4xl font-bold text-purple-300 mb-16 uppercase";
+        h2.className = "text-lg sm:text-xl md:text-3xl lg:text-4xl font-bold text-purple-300 mb-12 md:mb-16 uppercase whitespace-nowrap";
         h2.style.textShadow = "0 2px 5px rgba(0,0,0,0.9)";
-        prompt.className = "text-gray-300 text-sm md:text-base lg:text-lg font-medium italic drop-shadow-md";
+        prompt.className = "text-gray-300 text-xs sm:text-sm md:text-base lg:text-lg font-medium italic drop-shadow-md px-4";
 
         // Trigger reflow to restart animations
         void splashScreen.offsetWidth;

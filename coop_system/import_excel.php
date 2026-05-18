@@ -233,10 +233,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
                 $check_stmt->close();
             }
 
-            // Priority Match 2: Exact Name
+            // Priority Match 2: Exact Name (Fixed to prevent NULL mismatch failures)
             if ($existing_member_id === null) {
-                $check_stmt = $conn->prepare("SELECT member_id FROM members WHERE last_name = ? AND first_name = ? AND middle_name = ?");
-                $check_stmt->bind_param("sss", $last_name, $first_name, $middle_name);
+                $check_stmt = $conn->prepare("SELECT member_id FROM members WHERE last_name = ? AND first_name = ?");
+                $check_stmt->bind_param("ss", $last_name, $first_name);
                 $check_stmt->execute();
                 $check_res = $check_stmt->get_result();
                 if ($check_res->num_rows > 0) {
@@ -253,6 +253,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
                 $update_params = [];
                 $types = "";
 
+                if ($form_id !== '') { $update_parts[] = "form_id = ?"; $update_params[] = $form_id; $types .= "s"; }
                 if ($dob !== null) { $update_parts[] = "date_of_birth = ?"; $update_params[] = $dob; $types .= "s"; }
                 if ($birth_place !== '') { $update_parts[] = "birth_place = ?"; $update_params[] = $birth_place; $types .= "s"; }
                 if ($civil_status !== '') { $update_parts[] = "civil_status = ?"; $update_params[] = $civil_status; $types .= "s"; }
@@ -275,7 +276,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
                     $types .= "i";
                     
                     $update_stmt = $conn->prepare($sql_update);
-                    // Dynamically bind the exact parameters we extracted
                     $update_stmt->bind_param($types, ...$update_params);
                     $update_stmt->execute();
                     $update_stmt->close();
@@ -292,7 +292,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
             }
         }
 
-        // -- 2. PROCESS BENEFICIARY --
+        // -- 2. PROCESS BENEFICIARY (Fixed overwriting issue) --
         if (!empty($ben_name) && $last_inserted_member_id !== null) {
             list($ben_last, $ben_first, $ben_middle) = splitName($ben_name, false);
 
@@ -301,18 +301,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
             
             $ben_rel = getVal($row, $excel_header_index_map, 'ben_rel');
 
-            $first_name_keyword = explode(' ', trim($ben_first))[0] . '%'; 
-
-            $b_check = $conn->prepare("SELECT 1 FROM beneficiaries WHERE member_id = ? AND last_name = ? AND first_name LIKE ?");
-            $b_check->bind_param("iss", $last_inserted_member_id, $ben_last, $first_name_keyword);
+            // Exact match query to safely differentiate siblings with similar names
+            $b_check = $conn->prepare("SELECT beneficiary_id FROM beneficiaries WHERE member_id = ? AND last_name = ? AND first_name = ? AND middle_name = ? AND relationship = ?");
+            $b_check->bind_param("issss", $last_inserted_member_id, $ben_last, $ben_first, $ben_middle, $ben_rel);
             $b_check->execute();
             $b_res = $b_check->get_result();
 
             if ($b_res->num_rows > 0) {
                 // Update existing beneficiary
+                $ben_id_to_update = $b_res->fetch_assoc()['beneficiary_id'];
                 if ($ben_dob !== null) {
-                    $upd_b = $conn->prepare("UPDATE beneficiaries SET date_of_birth = ?, relationship = ? WHERE member_id = ? AND last_name = ? AND first_name LIKE ?");
-                    $upd_b->bind_param("ssiss", $ben_dob, $ben_rel, $last_inserted_member_id, $ben_last, $first_name_keyword);
+                    $upd_b = $conn->prepare("UPDATE beneficiaries SET date_of_birth = ? WHERE beneficiary_id = ?");
+                    $upd_b->bind_param("si", $ben_dob, $ben_id_to_update);
                     $upd_b->execute();
                     $upd_b->close();
                 }
