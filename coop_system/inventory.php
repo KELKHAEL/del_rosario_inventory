@@ -5,15 +5,16 @@ include 'db.php';
 // Fetch dynamic dropdown data
 $categories = [];
 $res_cat = $conn->query("SELECT name FROM config_product_categories ORDER BY name ASC");
-if($res_cat) { while($r = $res_cat->fetch_assoc()) { $categories[] = $r['name']; } }
+if($res_cat) { while($r = $res_cat->fetch_assoc()) { $categories[] = trim($r['name']); } }
 
 $unit_types = [];
 $res_units = $conn->query("SELECT name FROM config_unit_types ORDER BY name ASC");
-if($res_units) { while($r = $res_units->fetch_assoc()) { $unit_types[] = $r['name']; } }
+if($res_units) { while($r = $res_units->fetch_assoc()) { $unit_types[] = trim($r['name']); } }
 
-// Process Add/Edit/Delete Product
+// Process POST Actions Cleanly Separated
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
+    // ACTION 1: DELETE PRODUCT
     if (isset($_POST['delete_product_id'])) {
         $del_id = (int)$_POST['delete_product_id'];
         $conn->query("DELETE FROM inventory WHERE product_id=$del_id");
@@ -24,46 +25,46 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
     }
     
-    $product_name = $conn->real_escape_string($_POST['product_name']);
-    $product_type = $conn->real_escape_string($_POST['product_type']);
-    $quantity_type = $conn->real_escape_string($_POST['quantity_type']);
-    $price = (float)$_POST['price'];
-
-    if (isset($_POST['product_id']) && !empty($_POST['product_id'])) {
-        // Edit existing product (Does NOT update quantity)
-        $id = (int)$_POST['product_id'];
-        $sql = "UPDATE inventory SET product_name='$product_name', product_type='$product_type', quantity_type='$quantity_type', price='$price' WHERE product_id=$id";
-        $conn->query($sql);
-        $_SESSION['alert_title'] = "Item Updated";
-        $_SESSION['alert_message'] = "The product information has been successfully updated.";
+    // ACTION 2: ADJUST STOCK LEVEL
+    if (isset($_POST['adjust_stock_id'])) {
+        $adj_id = (int)$_POST['adjust_stock_id'];
+        $adj_amount = (int)$_POST['adjust_amount'];
+        $conn->query("UPDATE inventory SET current_quantity = current_quantity + $adj_amount WHERE product_id=$adj_id");
+        $_SESSION['alert_title'] = "Stock Adjusted";
+        $_SESSION['alert_message'] = "The inventory levels have been updated successfully.";
         $_SESSION['alert_type'] = "success";
-    } else {
-        // Add completely new product
-        $current_quantity = (int)$_POST['current_quantity'];
-        $sql = "INSERT INTO inventory (product_name, product_type, quantity_type, current_quantity, price) 
-                VALUES ('$product_name', '$product_type', '$quantity_type', $current_quantity, '$price')";
-        $conn->query($sql);
-        $_SESSION['alert_title'] = "Item Added";
-        $_SESSION['alert_message'] = "A new product has been successfully added to the master inventory.";
-        $_SESSION['alert_type'] = "success";
+        header("Location: inventory.php");
+        exit();
     }
-    header("Location: inventory.php");
-    exit();
-}
 
-// Process Stock Adjustment
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['adjust_stock_id'])) {
-    $adj_id = (int)$_POST['adjust_stock_id'];
-    $adj_amount = (int)$_POST['adjust_amount'];
-    
-    // We simply mathematically add the amount. If they pass a negative number, it will subtract it.
-    $conn->query("UPDATE inventory SET current_quantity = current_quantity + $adj_amount WHERE product_id=$adj_id");
-    
-    $_SESSION['alert_title'] = "Stock Adjusted";
-    $_SESSION['alert_message'] = "The inventory levels have been updated successfully.";
-    $_SESSION['alert_type'] = "success";
-    header("Location: inventory.php");
-    exit();
+    // ACTION 3: ADD OR EDIT PRODUCT DETAILS
+    if (isset($_POST['product_name'])) {
+        $product_name = $conn->real_escape_string(trim($_POST['product_name']));
+        $product_type = $conn->real_escape_string(trim($_POST['product_type']));
+        $quantity_type = $conn->real_escape_string(trim($_POST['quantity_type']));
+        $price = (float)$_POST['price'];
+
+        if (!empty($_POST['product_id'])) {
+            // Edit existing product
+            $id = (int)$_POST['product_id'];
+            $sql = "UPDATE inventory SET product_name='$product_name', product_type='$product_type', quantity_type='$quantity_type', price='$price' WHERE product_id=$id";
+            $conn->query($sql);
+            $_SESSION['alert_title'] = "Item Updated";
+            $_SESSION['alert_message'] = "The product information has been successfully updated.";
+            $_SESSION['alert_type'] = "success";
+        } else {
+            // Add completely new product
+            $current_quantity = (int)$_POST['current_quantity'];
+            $sql = "INSERT INTO inventory (product_name, product_type, quantity_type, current_quantity, price) 
+                    VALUES ('$product_name', '$product_type', '$quantity_type', $current_quantity, '$price')";
+            $conn->query($sql);
+            $_SESSION['alert_title'] = "Item Added";
+            $_SESSION['alert_message'] = "A new product has been successfully added to the master inventory.";
+            $_SESSION['alert_type'] = "success";
+        }
+        header("Location: inventory.php");
+        exit();
+    }
 }
 ?>
 
@@ -200,11 +201,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['adjust_stock_id'])) {
 
         <aside id="sidebar" class="bg-white w-72 border-r border-gray-200 flex flex-col transition-transform transform -translate-x-full md:translate-x-0 fixed md:relative z-50 h-full shadow-lg md:shadow-none print:hidden">
             <div class="p-6 flex items-center justify-center border-b border-gray-100 relative">
-                
                 <a href="#" onclick="showSplashScreen(); return false;" class="block">
                     <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="w-40 md:w-52 h-auto object-contain py-2 drop-shadow-sm transition-transform hover:scale-105">
                 </a>
-
                 <button class="absolute top-4 right-4 md:hidden text-gray-400 hover:text-gray-800" onclick="toggleSidebar()">
                     <i class="fas fa-times text-xl"></i>
                 </button>
@@ -282,7 +281,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['adjust_stock_id'])) {
                     
                     <div class="flex w-full lg:w-1/3 bg-white border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-all shadow-sm">
                         <div class="px-3 py-2 text-gray-400 flex items-center justify-center"><i class="fas fa-search"></i></div>
-                        <input type="text" id="liveSearch" placeholder="Search Products, Categories..." class="w-full py-2 pr-4 outline-none text-sm text-gray-700 bg-transparent">
+                        <input type="text" id="liveSearch" placeholder="Search Products..." class="w-full py-2 pr-4 outline-none text-sm text-gray-700 bg-transparent">
                     </div>
 
                     <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
@@ -309,16 +308,29 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['adjust_stock_id'])) {
                             </thead>
                             <tbody class="divide-y divide-gray-100" id="inventoryTableBody">
                                 <?php
-                                $sql = "SELECT * FROM inventory ORDER BY product_name ASC";
+                                // We strictly sort by Category First, then Product Name to create the groupings!
+                                $sql = "SELECT * FROM inventory ORDER BY product_type ASC, product_name ASC";
                                 $result = $conn->query($sql);
 
                                 if ($result && $result->num_rows > 0) {
+                                    $current_category = null;
+                                    
                                     while($row = $result->fetch_assoc()) {
                                         
+                                        // Dynamic Category Header Row Generation
+                                        if ($current_category !== $row['product_type']) {
+                                            $current_category = $row['product_type'];
+                                            echo "<tr class='category-header bg-purple-100/60'>
+                                                    <td colspan='5' class='px-6 py-2.5 font-black text-primaryDark uppercase text-sm tracking-widest border-y border-purple-200'>
+                                                        <i class='fas fa-tags mr-2 opacity-50'></i>" . htmlspecialchars($current_category) . "
+                                                    </td>
+                                                  </tr>";
+                                        }
+
                                         $stock = $row['current_quantity'];
                                         if ($stock <= 0) {
                                             $stockBadge = "<span class='inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-red-100 text-red-800 border border-red-200'><i class='fas fa-times-circle mr-1'></i> OUT OF STOCK ({$stock})</span>";
-                                            $rowBg = "bg-red-50/30"; // Very subtle red tint
+                                            $rowBg = "bg-red-50/30"; 
                                         } elseif ($stock < 5) {
                                             $stockBadge = "<span class='inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-200'><i class='fas fa-exclamation-triangle mr-1'></i> LOW STOCK ({$stock})</span>";
                                             $rowBg = "";
@@ -328,7 +340,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['adjust_stock_id'])) {
                                         }
 
                                         echo "<tr class='inventory-row {$rowBg} hover:bg-purple-50 transition-colors'>
-                                                <td class='px-6 py-4 font-bold text-gray-900 capitalize'>" . htmlspecialchars($row['product_name']) . "</td>
+                                                <td class='px-6 py-4 font-bold text-gray-900 capitalize product-name-cell'>" . htmlspecialchars($row['product_name']) . "</td>
                                                 <td class='px-6 py-4 text-xs font-semibold tracking-wider text-gray-500 uppercase'>" . htmlspecialchars($row['product_type']) . "</td>
                                                 <td class='px-6 py-4 font-semibold text-gray-700'>₱" . number_format($row['price'], 2) . "</td>
                                                 <td class='px-6 py-4'>{$stockBadge}</td>
@@ -375,24 +387,60 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['adjust_stock_id'])) {
             overlay.classList.toggle('hidden');
         }
 
-        // --- LIVE SEARCH ---
+        // --- UPGRADED LIVE SEARCH ---
+        // Dynamically hides/shows the new Category Headers if they are empty
         document.getElementById('liveSearch').addEventListener('keyup', function() {
             let filter = this.value.toLowerCase();
-            let rows = document.querySelectorAll('.inventory-row');
+            let allRows = document.querySelectorAll('#inventoryTableBody tr');
+            
+            let currentHeader = null;
+            let visibleItemsUnderHeader = 0;
 
-            rows.forEach(row => {
-                let text = row.textContent.toLowerCase();
-                row.style.display = text.includes(filter) ? '' : 'none';
+            allRows.forEach(row => {
+                if (row.classList.contains('category-header')) {
+                    if (currentHeader !== null) {
+                        currentHeader.style.display = visibleItemsUnderHeader > 0 ? '' : 'none';
+                    }
+                    currentHeader = row;
+                    visibleItemsUnderHeader = 0;
+                    row.style.display = ''; 
+                } else if (row.classList.contains('inventory-row')) {
+                    let text = row.querySelector('.product-name-cell').textContent.toLowerCase();
+                    if (text.includes(filter)) {
+                        row.style.display = '';
+                        visibleItemsUnderHeader++;
+                    } else {
+                        row.style.display = 'none';
+                    }
+                }
             });
+            // Final catch for the very last category in the loop
+            if (currentHeader !== null) {
+                currentHeader.style.display = visibleItemsUnderHeader > 0 ? '' : 'none';
+            }
         });
+
+        // --- SMART SELECTOR LOGIC ---
+        // Forces the dropdown to select an option even if there are weird spaces in the database
+        function selectOptionSmartly(selectId, valueToFind) {
+            let select = document.getElementById(selectId);
+            let targetVal = valueToFind.trim().toLowerCase();
+            for (let i = 0; i < select.options.length; i++) {
+                if (select.options[i].value.trim().toLowerCase() === targetVal || select.options[i].text.trim().toLowerCase() === targetVal) {
+                    select.selectedIndex = i;
+                    return;
+                }
+            }
+            select.value = valueToFind; // Fallback
+        }
 
         // --- PRODUCT MODAL LOGIC ---
         function openModal() {
             document.getElementById('modalTitle').innerHTML = '<i class="fas fa-plus-circle text-primary mr-2"></i>Add New Product';
             document.getElementById('product_id').value = '';
             document.getElementById('product_name').value = '';
-            document.getElementById('product_type').value = '';
-            document.getElementById('quantity_type').value = '';
+            document.getElementById('product_type').selectedIndex = 0;
+            document.getElementById('quantity_type').selectedIndex = 0;
             document.getElementById('price').value = '';
             
             // Show initial stock input since it's a new product
@@ -409,9 +457,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['adjust_stock_id'])) {
             document.getElementById('modalTitle').innerHTML = '<i class="fas fa-edit text-blue-600 mr-2"></i>Edit Product Details';
             document.getElementById('product_id').value = id;
             document.getElementById('product_name').value = name;
-            document.getElementById('product_type').value = type;
-            document.getElementById('quantity_type').value = qtyType;
             document.getElementById('price').value = price;
+            
+            // Smart select Category and Unit Dropdowns
+            selectOptionSmartly('product_type', type);
+            selectOptionSmartly('quantity_type', qtyType);
 
             // Hide initial stock input (stock must be edited via the Adjust Stock button)
             const qtyGroup = document.getElementById('initial_qty_group');
@@ -444,7 +494,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['adjust_stock_id'])) {
             document.getElementById('adjustModal').classList.add('hidden');
             document.getElementById('adjustModal').classList.remove('flex');
         }
-
 
         // --- CUSTOM ALERT LOGIC ---
         let alertRedirectUrl = null;

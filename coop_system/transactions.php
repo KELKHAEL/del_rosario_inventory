@@ -1,4 +1,7 @@
-<?php include 'db.php'; ?>
+<?php 
+session_start(); // CRITICAL: Added this so the page can receive alerts!
+include 'db.php'; 
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -236,6 +239,7 @@
             }, 300);
         });
 
+        // --- CATCH PHP SESSION ALERTS ---
         <?php if (isset($_SESSION['alert_message'])): ?>
             document.addEventListener('DOMContentLoaded', () => {
                 showCustomAlert(
@@ -245,6 +249,7 @@
                 );
             });
             <?php 
+            // Destroy the session variables so the alert doesn't show again on refresh
             unset($_SESSION['alert_title']);
             unset($_SESSION['alert_message']);
             unset($_SESSION['alert_type']);
