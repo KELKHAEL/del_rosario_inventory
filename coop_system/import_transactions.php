@@ -71,18 +71,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         return implode(' ', $part);
     }
 
-    // STRICT NAME SPLITTER (As requested: Lastname, Firstname [Optional 2nd] [Middle Name])
+    // STRICT NAME SPLITTER
     function splitNameStrict($fullName) {
         $cleanName = preg_replace('/\s+/', ' ', trim($fullName)); 
         $last = ''; $first = ''; $middle = '';
         
         if (strpos($cleanName, ',') !== false) {
             $parts = explode(',', $cleanName, 2);
-            $last = trim($parts[0]);
+            $last = trim($parts[0]); // Everything before the comma is the last name (handles "de guzman")
             
             $f_parts = explode(' ', trim($parts[1]));
             if (count($f_parts) >= 3) {
-                // If 3 or more words, the very last word is the middle name
+                // If 3 or more words after the comma, the very last word is the middle name
                 $middle = array_pop($f_parts); 
                 $first = implode(' ', $f_parts);
             } else {
@@ -90,7 +90,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
                 $first = implode(' ', $f_parts);
             }
         } else {
-            // Failsafe if there is no comma in the excel cell
+            // Failsafe if there is no comma
             $parts = explode(' ', $cleanName);
             $last = count($parts) > 1 ? array_pop($parts) : $cleanName;
             if (count($parts) >= 3) {
@@ -212,10 +212,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
     }
 
     $_SESSION['alert_title'] = "Transactions Uploaded";
-    $_SESSION['alert_message'] = "The Excel file was parsed and items were STRICTLY matched to members in the database!";
+    $_SESSION['alert_message'] = "The Excel file was parsed and items are matched to members in the database!";
     $_SESSION['alert_type'] = "success";
     
-    header("Location: transactions.php");
+    header("Location: transactions.php"); // Redirecting back to transactions.php to avoid showing the alert on index.php
     exit();
 }
 ?>
