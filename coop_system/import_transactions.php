@@ -54,56 +54,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         return $val === '' ? 0 : (float)$val;
     }
 
-    // NEW SPLIT NAME LOGIC (Automatically detects middle name if > 2 words)
-    function splitName($fullName) {
-        $cleanName = preg_replace('/\s+/', ' ', trim($fullName)); 
-        $last = ''; $first = ''; $middle = '';
+    // Line builder for single rows
+    function buildItemLine($qty, $desc, $price, $amt) {
+        $q = trim((string)$qty);
+        $d = trim((string)$desc);
+        $p = trim((string)$price);
+        $a = trim((string)$amt);
         
-        if (strpos($cleanName, ',') !== false) {
-            $parts = explode(',', $cleanName, 2);
-            $last = trim($parts[0]);
-            $f_parts = explode(' ', trim($parts[1]));
-            if (count($f_parts) >= 3) {
-                $middle = array_pop($f_parts); // Plucks the last word to be the middle name
-            }
-            $first = implode(' ', $f_parts);
-        } else {
-            $parts = explode(' ', $cleanName);
-            $last = count($parts) > 1 ? array_pop($parts) : $cleanName;
-            if (count($parts) >= 3) {
-                $middle = array_pop($parts);
-            }
-            $first = implode(' ', $parts);
-        }
-        return [strtoupper($last), strtoupper($first), strtoupper($middle)];
-    }
-
-    // Smart Multi-line cell parser
-    function buildItemDetails($qty_raw, $desc_raw, $price_raw, $amt_raw) {
-        $qtys = explode("\n", trim((string)$qty_raw));
-        $descs = explode("\n", trim((string)$desc_raw));
-        $prices = explode("\n", trim((string)$price_raw));
-        $amts = explode("\n", trim((string)$amt_raw));
-
-        $max_lines = max(count($qtys), count($descs), count($prices), count($amts));
-        $lines = [];
-        for($j = 0; $j < $max_lines; $j++) {
-            $q = isset($qtys[$j]) ? trim($qtys[$j]) : '';
-            $d = isset($descs[$j]) ? trim($descs[$j]) : '';
-            $p = isset($prices[$j]) ? trim($prices[$j]) : '';
-            $a = isset($amts[$j]) ? trim($amts[$j]) : '';
-            
-            $part = [];
-            if($q !== '') $part[] = $q . "x";
-            if($d !== '') $part[] = $d;
-            if($p !== '') $part[] = "@ ₱" . str_replace('₱', '', $p);
-            if($a !== '') $part[] = "= ₱" . str_replace('₱', '', $a);
-            
-            if(!empty($part)) {
-                $lines[] = implode(' ', $part);
-            }
-        }
-        return implode("\n", $lines);
+        if($q === '' && $d === '' && $p === '' && $a === '') return null;
+        
+        $part = [];
+        if($q !== '') $part[] = $q . "x";
+        if($d !== '') $part[] = $d;
+        if($p !== '') $part[] = "@ ₱" . str_replace('₱', '', $p);
+        if($a !== '') $part[] = "= ₱" . str_replace('₱', '', $a);
+        
+        return implode(' ', $part);
     }
 
     // 3. DETECT HEADERS
@@ -132,106 +98,115 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         return isset($map[$field]) && isset($row[$map[$field]]) ? trim((string)$row[$map[$field]]) : '';
     }
 
-    // 4. PARSE ROWS & INSERT INTO DB
+    // 4. MULTI-ROW GROUPING ENGINE
+    $transactions_to_save = [];
+    $current_idx = -1;
+
     for ($i = $start_row; $i < count($rows); $i++) {
         $row = $rows[$i];
         if (!is_array($row)) continue;
 
-        $raw_date = getVal($row, $excel_map, 'date');
-        $member_name = getVal($row, $excel_map, 'member_name');
-        
-        if (empty($raw_date) && empty($member_name)) continue;
+        $cell_name = getVal($row, $excel_map, 'member_name');
+        $cell_date = getVal($row, $excel_map, 'date');
 
-        $t_date = parseDate($raw_date) ?: date('Y-m-d');
-        $qty = getVal($row, $excel_map, 'qty');
-        $desc = getVal($row, $excel_map, 'item_desc');
-        $price = getVal($row, $excel_map, 'price');
-        $item_amount = getVal($row, $excel_map, 'item_amount');
-        
-        $total = cleanNumber(getVal($row, $excel_map, 'total_amount'));
-        $dp = cleanNumber(getVal($row, $excel_map, 'downpayment'));
-        $invoice = getVal($row, $excel_map, 'invoice');
-        $balance = cleanNumber(getVal($row, $excel_map, 'balance'));
-        $status = strtoupper(getVal($row, $excel_map, 'status'));
+        // If the row has a name or date, it is a NEW transaction block
+        if (!empty($cell_name) || !empty($cell_date)) {
+            $current_idx++;
+            $transactions_to_save[$current_idx] = [
+                'date'         => parseDate($cell_date) ?: date('Y-m-d'),
+                'member_name'  => $cell_name,
+                'total_amount' => cleanNumber(getVal($row, $excel_map, 'total_amount')),
+                'downpayment'  => cleanNumber(getVal($row, $excel_map, 'downpayment')),
+                'invoice'      => getVal($row, $excel_map, 'invoice'),
+                'balance'      => cleanNumber(getVal($row, $excel_map, 'balance')),
+                'status'       => strtoupper(getVal($row, $excel_map, 'status')),
+                'items'        => [] // We will push items into this array
+            ];
+        }
 
-        $items_details = buildItemDetails($qty, $desc, $price, $item_amount);
+        // Always extract item details for the current block (even on blank sub-rows)
+        if ($current_idx >= 0) {
+            $qty   = getVal($row, $excel_map, 'qty');
+            $desc  = getVal($row, $excel_map, 'item_desc');
+            $price = getVal($row, $excel_map, 'price');
+            $amt   = getVal($row, $excel_map, 'item_amount');
+            
+            $item_line = buildItemLine($qty, $desc, $price, $amt);
+            if ($item_line !== null) {
+                $transactions_to_save[$current_idx]['items'][] = $item_line;
+            }
+        }
+    }
 
-        // --- NEW FUZZY SEARCH ALGORITHM ---
+    // 5. CACHE ALL MEMBERS FOR FAST FUZZY MATCHING
+    $all_stmt = $conn->query("SELECT member_id, last_name, first_name, middle_name FROM members");
+    $all_members = [];
+    while($db_row = $all_stmt->fetch_assoc()) {
+        $db_full = strtoupper($db_row['last_name'] . $db_row['first_name'] . $db_row['middle_name']);
+        $db_normalized = preg_replace('/[^A-Z0-9]/', '', $db_full); // strips spaces/commas
+        $all_members[] = [
+            'id'         => $db_row['member_id'],
+            'normalized' => $db_normalized
+        ];
+    }
+
+    // 6. SAVE TO DATABASE
+    foreach ($transactions_to_save as $txn) {
+        if (empty($txn['member_name'])) continue;
+
+        // Merge all items into a single beautiful receipt string separated by newlines
+        $items_str = implode("\n", $txn['items']);
+
+        // --- THE ULTIMATE FUZZY MATCHING ALGORITHM ---
         $member_id = null;
-        if (!empty($member_name)) {
-            list($last, $first, $middle) = splitName($member_name);
-            
-            // Step 1: Find all members with the exact Last Name
-            $stmt = $conn->prepare("SELECT member_id, first_name FROM members WHERE last_name = ?");
-            $stmt->bind_param("s", $last);
-            $stmt->execute();
-            $res = $stmt->get_result();
-            
-            $best_match_id = null;
-            $highest_sim = 0;
-            
-            if ($res->num_rows > 0) {
-                while($db_row = $res->fetch_assoc()) {
-                    $db_first = strtoupper(trim($db_row['first_name']));
-                    if ($db_first === $first) {
-                        $best_match_id = $db_row['member_id'];
-                        $highest_sim = 100;
-                        break;
-                    }
-                    
-                    // Compare typo similarity using Levenshtein / similar_text logic
-                    similar_text($first, $db_first, $percent);
-                    if ($percent > $highest_sim) {
-                        $highest_sim = $percent;
-                        $best_match_id = $db_row['member_id'];
-                    }
-                }
-            } else {
-                // Step 2 Fallback: If last name has a typo, compare the full string against all members
-                $all_stmt = $conn->query("SELECT member_id, last_name, first_name FROM members");
-                while($db_row = $all_stmt->fetch_assoc()) {
-                    $db_full = strtoupper(trim($db_row['last_name'] . ', ' . $db_row['first_name']));
-                    $excel_full = strtoupper(trim($last . ', ' . $first));
-                    similar_text($excel_full, $db_full, $percent);
-                    if ($percent > $highest_sim) {
-                        $highest_sim = $percent;
-                        $best_match_id = $db_row['member_id'];
-                    }
-                }
+        $excel_normalized = strtoupper(preg_replace('/[^A-Z0-9]/', '', $txn['member_name']));
+        $highest_sim = 0;
+        $best_match_id = null;
+        
+        foreach ($all_members as $m) {
+            if ($excel_normalized === $m['normalized']) {
+                $best_match_id = $m['id'];
+                $highest_sim = 100;
+                break;
             }
-            if (isset($stmt)) $stmt->close();
-            
-            // If the math determines they are at least a 70% match, it links them!
-            if ($highest_sim >= 70 && $best_match_id !== null) {
-                $member_id = $best_match_id;
+            // Compares spelling accuracy (e.g. Amarana vs Amrana)
+            similar_text($excel_normalized, $m['normalized'], $percent);
+            if ($percent > $highest_sim) {
+                $highest_sim = $percent;
+                $best_match_id = $m['id'];
             }
+        }
+        
+        // If the math determines they are at least a 70% match, securely link the member ID!
+        if ($highest_sim >= 70 && $best_match_id !== null) {
+            $member_id = $best_match_id;
         }
 
         $t_type = "PURCHASE";
-        if (stripos($items_details, 'share') !== false || stripos($member_name, 'share') !== false) {
+        if (stripos($items_str, 'share') !== false || stripos($txn['member_name'], 'share') !== false) {
             $t_type = "SHARE";
         }
 
-        // Avoid Duplicates by checking date, name, and invoice
+        // Avoid Duplicates
         $check = $conn->prepare("SELECT transaction_id FROM transactions WHERE transaction_date = ? AND member_name = ? AND invoice_no = ?");
-        $check->bind_param("sss", $t_date, $member_name, $invoice);
+        $check->bind_param("sss", $txn['date'], $txn['member_name'], $txn['invoice']);
         $check->execute();
         $c_res = $check->get_result();
 
         if ($c_res->num_rows > 0) {
             $tid = $c_res->fetch_assoc()['transaction_id'];
             $upd = $conn->prepare("UPDATE transactions SET member_id=?, items_details=?, payment_status=?, downpayment=?, remaining_balance=?, amount=? WHERE transaction_id=?");
-            $upd->bind_param("issdddi", $member_id, $items_details, $status, $dp, $balance, $total, $tid);
+            $upd->bind_param("issdddi", $member_id, $items_str, $txn['status'], $txn['downpayment'], $txn['balance'], $txn['total_amount'], $tid);
             $upd->execute();
         } else {
             $ins = $conn->prepare("INSERT INTO transactions (transaction_date, member_id, member_name, transaction_type, amount, items_details, invoice_no, payment_status, downpayment, remaining_balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $ins->bind_param("sissssssdd", $t_date, $member_id, $member_name, $t_type, $total, $items_details, $invoice, $status, $dp, $balance);
+            $ins->bind_param("sissssssdd", $txn['date'], $member_id, $txn['member_name'], $t_type, $txn['total_amount'], $items_str, $txn['invoice'], $txn['status'], $txn['downpayment'], $txn['balance']);
             $ins->execute();
         }
     }
 
     $_SESSION['alert_title'] = "Transactions Uploaded";
-    $_SESSION['alert_message'] = "The Excel file was parsed and transactions were linked to existing members automatically, even correcting minor spelling typos!";
+    $_SESSION['alert_message'] = "The Excel file was parsed! All multi-row items were grouped together and securely linked to the correct members using Fuzzy Matching.";
     $_SESSION['alert_type'] = "success";
     
     header("Location: transactions.php");

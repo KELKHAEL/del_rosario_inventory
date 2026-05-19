@@ -140,6 +140,8 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
             @page { size: A4 portrait; margin: 15mm; }
 
             body, html { background: white !important; margin: 0 !important; padding: 0 !important; height: auto !important; }
+            
+            /* THIS RULE ENSURES THE TRANSACTION HISTORY WIDGET WILL NOT BE PRINTED */
             .no-print { display: none !important; }
             
             .h-screen { height: auto !important; min-height: auto !important; }
