@@ -54,7 +54,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         return $val === '' ? 0 : (float)$val;
     }
 
-    // Line builder for single rows
     function buildItemLine($qty, $desc, $price, $amt) {
         $q = trim((string)$qty);
         $d = trim((string)$desc);
@@ -70,6 +69,36 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         if($a !== '') $part[] = "= ₱" . str_replace('₱', '', $a);
         
         return implode(' ', $part);
+    }
+
+    // STRICT NAME SPLITTER (As requested: Lastname, Firstname [Optional 2nd] [Middle Name])
+    function splitNameStrict($fullName) {
+        $cleanName = preg_replace('/\s+/', ' ', trim($fullName)); 
+        $last = ''; $first = ''; $middle = '';
+        
+        if (strpos($cleanName, ',') !== false) {
+            $parts = explode(',', $cleanName, 2);
+            $last = trim($parts[0]);
+            
+            $f_parts = explode(' ', trim($parts[1]));
+            if (count($f_parts) >= 3) {
+                // If 3 or more words, the very last word is the middle name
+                $middle = array_pop($f_parts); 
+                $first = implode(' ', $f_parts);
+            } else {
+                // 1 or 2 words means it is entirely the first name
+                $first = implode(' ', $f_parts);
+            }
+        } else {
+            // Failsafe if there is no comma in the excel cell
+            $parts = explode(' ', $cleanName);
+            $last = count($parts) > 1 ? array_pop($parts) : $cleanName;
+            if (count($parts) >= 3) {
+                $middle = array_pop($parts);
+            }
+            $first = implode(' ', $parts);
+        }
+        return [$last, $first, $middle];
     }
 
     // 3. DETECT HEADERS
@@ -120,11 +149,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
                 'invoice'      => getVal($row, $excel_map, 'invoice'),
                 'balance'      => cleanNumber(getVal($row, $excel_map, 'balance')),
                 'status'       => strtoupper(getVal($row, $excel_map, 'status')),
-                'items'        => [] // We will push items into this array
+                'items'        => [] 
             ];
         }
 
-        // Always extract item details for the current block (even on blank sub-rows)
+        // Extract item details for the current block
         if ($current_idx >= 0) {
             $qty   = getVal($row, $excel_map, 'qty');
             $desc  = getVal($row, $excel_map, 'item_desc');
@@ -138,49 +167,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         }
     }
 
-    // 5. CACHE ALL MEMBERS FOR FAST FUZZY MATCHING
-    $all_stmt = $conn->query("SELECT member_id, last_name, first_name, middle_name FROM members");
-    $all_members = [];
-    while($db_row = $all_stmt->fetch_assoc()) {
-        $db_full = strtoupper($db_row['last_name'] . $db_row['first_name'] . $db_row['middle_name']);
-        $db_normalized = preg_replace('/[^A-Z0-9]/', '', $db_full); // strips spaces/commas
-        $all_members[] = [
-            'id'         => $db_row['member_id'],
-            'normalized' => $db_normalized
-        ];
-    }
-
-    // 6. SAVE TO DATABASE
+    // 5. STRICT DB INSERTION
     foreach ($transactions_to_save as $txn) {
         if (empty($txn['member_name'])) continue;
 
-        // Merge all items into a single beautiful receipt string separated by newlines
         $items_str = implode("\n", $txn['items']);
 
-        // --- THE ULTIMATE FUZZY MATCHING ALGORITHM ---
+        // Strict parsing logic
+        list($last, $first, $middle) = splitNameStrict($txn['member_name']);
+
+        // STRICT EXACT MATCHING ONLY (No Fuzzy Search)
         $member_id = null;
-        $excel_normalized = strtoupper(preg_replace('/[^A-Z0-9]/', '', $txn['member_name']));
-        $highest_sim = 0;
-        $best_match_id = null;
+        $stmt = $conn->prepare("SELECT member_id FROM members WHERE last_name = ? AND first_name = ? LIMIT 1");
+        $stmt->bind_param("ss", $last, $first);
+        $stmt->execute();
+        $res = $stmt->get_result();
         
-        foreach ($all_members as $m) {
-            if ($excel_normalized === $m['normalized']) {
-                $best_match_id = $m['id'];
-                $highest_sim = 100;
-                break;
-            }
-            // Compares spelling accuracy (e.g. Amarana vs Amrana)
-            similar_text($excel_normalized, $m['normalized'], $percent);
-            if ($percent > $highest_sim) {
-                $highest_sim = $percent;
-                $best_match_id = $m['id'];
-            }
+        if ($res->num_rows > 0) {
+            $member_id = $res->fetch_assoc()['member_id'];
         }
-        
-        // If the math determines they are at least a 70% match, securely link the member ID!
-        if ($highest_sim >= 70 && $best_match_id !== null) {
-            $member_id = $best_match_id;
-        }
+        $stmt->close();
 
         $t_type = "PURCHASE";
         if (stripos($items_str, 'share') !== false || stripos($txn['member_name'], 'share') !== false) {
@@ -206,7 +212,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
     }
 
     $_SESSION['alert_title'] = "Transactions Uploaded";
-    $_SESSION['alert_message'] = "The Excel file was parsed! All multi-row items were grouped together and securely linked to the correct members using Fuzzy Matching.";
+    $_SESSION['alert_message'] = "The Excel file was parsed and items were STRICTLY matched to members in the database!";
     $_SESSION['alert_type'] = "success";
     
     header("Location: transactions.php");
