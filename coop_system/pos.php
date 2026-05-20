@@ -1,4 +1,5 @@
 <?php 
+session_start();
 include 'db.php'; 
 
 // Fetch negative stock setting
@@ -8,33 +9,90 @@ if ($setting_res && $setting_res->num_rows > 0) {
     $allow_negative = (int)$setting_res->fetch_assoc()['setting_value'];
 }
 
+// Fetch all members for the dropdown link
+$members = [];
+$mem_res = $conn->query("SELECT member_id, last_name, first_name FROM members ORDER BY last_name ASC");
+if ($mem_res) {
+    while($m = $mem_res->fetch_assoc()) {
+        $members[] = $m;
+    }
+}
+
 // PROCESS THE CHECKOUT CART
 $checkout_success = false;
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['checkout'])) {
     $cart = json_decode($_POST['cart_data'], true);
     $payment = $conn->real_escape_string($_POST['payment_method']);
-    $receipt = $conn->real_escape_string($_POST['receipt_no']); 
     
-    $buyer_name = $conn->real_escape_string($_POST['buyer_name'] ?? ''); 
-    $buyer_contact = $conn->real_escape_string($_POST['buyer_contact'] ?? ''); 
-    
+    // Default values
+    $receipt = 'N/A';
+    $buyer_name = 'N/A';
+    $member_id = null;
+    $status = 'COMPLETED';
+
+    // Handle the specific logic based on Payment Method
+    if ($payment === 'Others') {
+        $status = 'PENDING';
+        $buyer_name = $conn->real_escape_string($_POST['event_name']); // e.g. "Bazaar at Plaza"
+        $receipt = 'OUTSOURCED';
+    } else {
+        // Cash, GCash, Pay Later belong to actual Members
+        if (!empty($_POST['member_select'])) {
+            $member_id = (int)$_POST['member_select'];
+            // Get member name for the string record
+            $stmt_m = $conn->query("SELECT last_name, first_name FROM members WHERE member_id = $member_id");
+            if ($row_m = $stmt_m->fetch_assoc()) {
+                $buyer_name = $row_m['last_name'] . ', ' . $row_m['first_name'];
+            }
+        }
+        
+        if ($payment === 'Pay Later') {
+            $status = 'PENDING';
+        } else {
+            $receipt = $conn->real_escape_string($_POST['receipt_no']);
+        }
+    }
+
     $date = date('Y-m-d');
+    $items_details_arr = [];
+    $total_cart_amount = 0;
 
     if (!empty($cart)) {
+        // 1. Process Inventory Outsource Table (Legacy sync)
         foreach ($cart as $item) {
             $id = (int)$item['id'];
             $qty = (int)$item['qty'];
+            $name = $conn->real_escape_string($item['name']);
+            $price = (float)$item['price'];
+            $line_total = $qty * $price;
+            
+            $total_cart_amount += $line_total;
+            $items_details_arr[] = "{$qty}x {$name} @ ₱{$price} = ₱{$line_total}";
             
             $conn->query("UPDATE inventory SET current_quantity = current_quantity - $qty WHERE product_id=$id");
-            
-            $conn->query("INSERT INTO inventory_outsourcing (record_date, product_id, quantity_out, payment_method, receipt_no, buyer_name, buyer_contact) 
-                          VALUES ('$date', $id, $qty, '$payment', '$receipt', '$buyer_name', '$buyer_contact')");
+            $conn->query("INSERT INTO inventory_outsourcing (record_date, product_id, quantity_out, payment_method, receipt_no, buyer_name) 
+                          VALUES ('$date', $id, $qty, '$payment', '$receipt', '$buyer_name')");
         }
+
+        // 2. Process Modern Transactions Table (To link to view_member.php)
+        $items_details = $conn->real_escape_string(implode("\n", $items_details_arr));
+        $trans_type = ($payment === 'Others') ? 'OUTSOURCED' : 'PURCHASE';
+        
+        $sql_trans = "INSERT INTO transactions (transaction_date, member_id, member_name, transaction_type, amount, items_details, invoice_no, payment_status, downpayment, remaining_balance) 
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)";
+        
+        $balance = ($status === 'PENDING') ? $total_cart_amount : 0;
+        
+        $stmt_trans = $conn->prepare($sql_trans);
+        $stmt_trans->bind_param("sissssssd", $date, $member_id, $buyer_name, $trans_type, $total_cart_amount, $items_details, $receipt, $status, $balance);
+        $stmt_trans->execute();
+        $stmt_trans->close();
+
         $checkout_success = true;
     }
 }
 
-// Fetch dynamic unit types from database
+// Fetch dynamic unit types
 $unit_types = [];
 $res_units = $conn->query("SELECT name FROM config_unit_types ORDER BY name ASC");
 if ($res_units) {
@@ -90,11 +148,9 @@ if ($res_units) {
 
         <aside id="sidebar" class="bg-white w-72 border-r border-gray-200 flex flex-col transition-transform transform -translate-x-full md:translate-x-0 fixed md:relative z-50 h-full shadow-lg md:shadow-none">
             <div class="p-6 flex items-center justify-center border-b border-gray-100 relative">
-                
                 <a href="#" onclick="showSplashScreen(); return false;" class="block">
                     <img src="img/purplearmy_logo-removebg.png" alt="Coop Logo" class="w-40 md:w-52 h-auto object-contain py-2 drop-shadow-sm transition-transform hover:scale-105">
                 </a>
-
                 <button class="absolute top-4 right-4 md:hidden text-gray-400 hover:text-gray-800" onclick="toggleSidebar()">
                     <i class="fas fa-times text-xl"></i>
                 </button>
@@ -160,17 +216,32 @@ if ($res_units) {
                     </div>
 
                     <div class="flex-1 overflow-y-auto p-4 md:p-6 relative">
-                        <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4" id="products-grid">
+                        <div id="products-container" class="flex flex-col gap-6">
                             <?php
-                            $res = $conn->query("SELECT * FROM inventory ORDER BY product_name ASC");
+                            // GROUP PRODUCTS BY CATEGORY
+                            $sql = "SELECT * FROM inventory ORDER BY product_type ASC, product_name ASC";
+                            $res = $conn->query($sql);
+                            
                             if ($res && $res->num_rows > 0) {
+                                $current_category = null;
+                                
                                 while($row = $res->fetch_assoc()) {
+                                    if ($current_category !== $row['product_type']) {
+                                        // Close previous category grid if it exists
+                                        if ($current_category !== null) { echo "</div></div>"; }
+                                        $current_category = $row['product_type'];
+                                        
+                                        // Open new category section
+                                        echo "<div class='category-section' data-cat='" . strtolower(htmlspecialchars($current_category)) . "'>";
+                                        echo "<h3 class='font-black text-gray-400 uppercase tracking-widest text-xs mb-3 flex items-center'><i class='fas fa-tags mr-2 text-primary opacity-50'></i>" . htmlspecialchars($current_category) . "</h3>";
+                                        echo "<div class='grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 products-grid'>";
+                                    }
                                     
                                     $stock_color = ($row['current_quantity'] <= 0) ? "text-red-600 font-bold" : "text-green-600 font-bold";
-                                    $bg_shade = ($row['current_quantity'] <= 0) ? "bg-red-50" : "bg-white";
+                                    $bg_shade = ($row['current_quantity'] <= 0) ? "bg-red-50/50 grayscale-[50%]" : "bg-white";
 
                                     echo "
-                                    <div class='product-card {$bg_shade} rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col hover:shadow-md transition-shadow relative overflow-hidden group' 
+                                    <div class='product-card {$bg_shade} rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col hover:shadow-md hover:border-purple-300 transition-all relative overflow-hidden group' 
                                          data-id='{$row['product_id']}' 
                                          data-name='" . strtolower(htmlspecialchars($row['product_name'])) . "' 
                                          data-price='{$row['price']}' 
@@ -179,47 +250,52 @@ if ($res_units) {
                                          
                                         <div class='flex-1 mb-3'>
                                             <h4 class='text-sm font-bold text-gray-800 capitalize leading-tight mb-1 group-hover:text-primary transition-colors'>" . htmlspecialchars($row['product_name']) . "</h4>
-                                            <div class='text-xs text-gray-500 uppercase tracking-wider'>" . htmlspecialchars($row['product_type']) . "</div>
                                         </div>
                                         
                                         <div class='text-lg font-extrabold text-gray-900 mb-2'>₱" . number_format($row['price'], 2) . "</div>
                                         
-                                        <div class='text-xs text-gray-600 mb-4 bg-gray-100 rounded px-2 py-1 inline-block w-max'>
-                                            Stock: <span id='stock-count-{$row['product_id']}' class='{$stock_color}'>{$row['current_quantity']}</span> {$row['quantity_type']}s
+                                        <div class='text-xs text-gray-600 mb-4 bg-gray-100/80 rounded px-2 py-1 inline-block w-max border border-gray-200'>
+                                            Stock: <span id='stock-count-{$row['product_id']}' class='{$stock_color}'>{$row['current_quantity']}</span> <span class='text-gray-400 ml-0.5'>{$row['quantity_type']}s</span>
                                         </div>
                                         
-                                        <button type='button' class='mt-auto w-full bg-white border-2 border-primary text-primary hover:bg-primary hover:text-white font-semibold py-2 rounded-lg text-sm transition-colors' 
+                                        <button type='button' class='mt-auto w-full bg-white border-2 border-primary text-primary hover:bg-primary hover:text-white font-bold py-2 rounded-lg text-sm transition-all transform active:scale-95' 
                                             onclick='addToCart({$row['product_id']}, \"" . addslashes($row['product_name']) . "\", {$row['price']}, {$row['current_quantity']})'>
                                             <i class='fas fa-cart-plus mr-1'></i> ADD
                                         </button>
                                     </div>";
                                 }
+                                // Close the very last category grid
+                                if ($current_category !== null) { echo "</div></div>"; }
                             } else {
-                                echo "<p class='col-span-full text-center text-gray-400 py-10'>No products available in inventory.</p>";
+                                echo "<div class='flex flex-col items-center justify-center py-20 opacity-40'>
+                                        <i class='fas fa-box-open text-6xl mb-4'></i>
+                                        <p class='text-lg font-bold'>No products available in inventory.</p>
+                                      </div>";
                             }
                             ?>
                         </div>
                     </div>
                 </div>
 
-                <div class="w-full lg:w-96 bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col shadow-2xl lg:shadow-none z-20 h-auto lg:h-full max-h-[50vh] lg:max-h-full">
+                <div class="w-full lg:w-[400px] xl:w-[450px] bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col shadow-2xl lg:shadow-none z-20 h-auto lg:h-full max-h-[60vh] lg:max-h-full shrink-0">
                     
-                    <div class="p-4 bg-gray-50 border-b border-gray-200">
-                        <h3 class="font-bold text-gray-800 text-lg"><i class="fas fa-shopping-basket text-primary mr-2"></i>Checkout Cart</h3>
+                    <div class="p-5 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                        <h3 class="font-black text-gray-800 text-lg tracking-tight"><i class="fas fa-shopping-basket text-primary mr-2"></i>Current Order</h3>
+                        <span id="cart-item-count" class="bg-purple-100 text-primary px-3 py-1 rounded-full text-xs font-bold border border-purple-200 shadow-sm">0 Items</span>
                     </div>
 
-                    <div id="cart-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-gray-50">
-                        <p class="text-gray-400 text-center text-sm py-10 flex flex-col items-center justify-center">
-                            <i class="fas fa-shopping-cart text-4xl mb-3 opacity-20"></i>
-                            Cart is empty
-                        </p>
+                    <div id="cart-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-gray-50/50 relative">
+                        <div id="cart-empty-state" class="absolute inset-0 flex flex-col items-center justify-center text-gray-400 opacity-60">
+                            <i class="fas fa-shopping-cart text-5xl mb-3"></i>
+                            <p class="text-sm font-semibold">Cart is empty</p>
+                        </div>
                     </div>
 
-                    <div class="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                    <div class="p-5 bg-white border-t border-gray-200 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] relative z-10">
                         
-                        <div class="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">
-                            <span class="text-gray-600 font-semibold uppercase text-sm tracking-wider">Total</span>
-                            <span class="text-3xl font-black text-green-600 tracking-tight">₱<span id="cart-total-price">0.00</span></span>
+                        <div class="flex justify-between items-end mb-5">
+                            <span class="text-gray-500 font-bold uppercase text-xs tracking-widest mb-1">Total Amount</span>
+                            <span class="text-4xl font-black text-green-600 tracking-tighter leading-none">₱<span id="cart-total-price">0.00</span></span>
                         </div>
 
                         <form action="pos.php" method="POST" id="checkoutForm" class="flex flex-col gap-3">
@@ -227,24 +303,37 @@ if ($res_units) {
                             <input type="hidden" name="cart_data" id="cart_data">
                             
                             <div>
-                                <select name="payment_method" id="payment_method" required class="w-full font-bold text-gray-800 border-2 border-gray-300 px-4 py-3 rounded-lg focus:outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600 transition-colors bg-white">
-                                    <option value="Cash">Cash Payment</option>
-                                    <option value="GCash">GCash Transfer</option>
-                                    <option value="Pay Later">Pay Later</option>
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1 px-1">Payment Method</label>
+                                <select name="payment_method" id="payment_method" required class="w-full font-bold text-gray-800 border-2 border-gray-300 px-4 py-3 rounded-lg focus:outline-none focus:border-primary focus:ring-0 transition-colors bg-gray-50 hover:bg-white cursor-pointer appearance-none shadow-sm">
+                                    <option value="Cash">Cash (Member Purchase)</option>
+                                    <option value="GCash">GCash (Member Purchase)</option>
+                                    <option value="Pay Later">Pay Later (Member Purchase)</option>
+                                    <option value="Others" class="text-blue-600">Others (Outsourced)</option>
                                 </select>
                             </div>
 
-                            <div id="receipt_group">
-                                <input type="text" name="receipt_no" id="receipt_no" placeholder="Reference No. or Invoice *" required class="w-full font-bold text-gray-800 border border-gray-300 px-4 py-3 rounded-lg focus:outline-none focus:border-primary placeholder-gray-400">
+                            <div id="member_select_group">
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1 px-1 mt-1">Select Member</label>
+                                <select name="member_select" id="member_select" class="w-full text-sm text-gray-700 border border-gray-300 px-4 py-2.5 rounded-lg focus:outline-none focus:border-primary shadow-sm bg-white">
+                                    <option value="">-- Choose Member --</option>
+                                    <?php foreach($members as $m): ?>
+                                        <option value="<?= $m['member_id'] ?>"><?= htmlspecialchars($m['last_name'] . ', ' . $m['first_name']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
                             </div>
 
-                            <div id="pay_later_group" class="hidden flex gap-2">
-                                <input type="text" name="buyer_name" id="buyer_name" placeholder="Buyer Name *" class="w-1/2 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-red-500">
-                                <input type="text" name="buyer_contact" id="buyer_contact" placeholder="Contact *" class="w-1/2 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-red-500">
+                            <div id="receipt_group" class="mt-1">
+                                <input type="text" name="receipt_no" id="receipt_no" placeholder="Receipt No. *" required class="w-full text-sm text-gray-800 border border-gray-300 px-4 py-2.5 rounded-lg focus:outline-none focus:border-primary shadow-sm bg-white">
                             </div>
 
-                            <button type="button" class="w-full bg-green-600 hover:bg-green-700 text-white font-black py-4 rounded-lg shadow-lg transition-transform transform hover:-translate-y-0.5 mt-2 flex items-center justify-center gap-2 text-lg" onclick="processCheckout()">
-                                <i class="fas fa-check-circle"></i> CONFIRM CHECKOUT
+                            <div id="outsourced_group" class="hidden mt-1 bg-blue-50 border border-blue-200 p-3 rounded-lg">
+                                <label class="block text-xs font-bold text-blue-700 uppercase tracking-wider mb-2"><i class="fas fa-truck-loading mr-1"></i> Outsourced Event Details</label>
+                                <input type="text" name="event_name" id="event_name" placeholder="Event Name / Location *" class="w-full text-sm text-gray-800 border border-blue-300 px-3 py-2 rounded focus:outline-none focus:border-blue-500 shadow-sm mb-2">
+                                <p class="text-[10px] text-blue-600 leading-tight">These items will be marked as "PENDING" so they can be monitored and returned if unsold.</p>
+                            </div>
+
+                            <button type="button" class="w-full bg-green-600 hover:bg-green-700 text-white font-black py-4 rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5 active:scale-95 mt-4 flex items-center justify-center gap-2 text-lg" onclick="processCheckout()">
+                                <i class="fas fa-check-circle"></i> COMPLETE CHECKOUT
                             </button>
                         </form>
                     </div>
@@ -264,7 +353,6 @@ if ($res_units) {
 
         // --- CUSTOM ALERT LOGIC ---
         let alertRedirectUrl = null;
-
         function showCustomAlert(title, message, type = 'error', redirectUrl = null) {
             const modal = document.getElementById('customAlertModal');
             const box = document.getElementById('customAlertBox');
@@ -315,94 +403,130 @@ if ($res_units) {
 
         <?php if ($checkout_success): ?>
             document.addEventListener('DOMContentLoaded', () => {
-                showCustomAlert('Transaction Complete', 'The checkout was processed successfully. Inventory levels have been updated.', 'success', 'outsourcing_report.php');
+                showCustomAlert('Transaction Complete', 'The checkout was processed securely. Inventory levels have been updated and linked to the history logs.', 'success', 'transactions.php');
             });
         <?php endif; ?>
 
         let cart = {};
         const allowNegativeStock = <?= $allow_negative ?> === 1;
 
-        // Payment UI Logic
+        // --- DYNAMIC PAYMENT UI LOGIC ---
         document.getElementById('payment_method').addEventListener('change', function() {
-            const receiptGroup = document.getElementById('receipt_group');
-            const receiptField = document.getElementById('receipt_no');
+            const method = this.value;
+            const memGroup = document.getElementById('member_select_group');
+            const memField = document.getElementById('member_select');
             
-            const payLaterGroup = document.getElementById('pay_later_group');
-            const buyerName = document.getElementById('buyer_name');
-            const buyerContact = document.getElementById('buyer_contact');
+            const recGroup = document.getElementById('receipt_group');
+            const recField = document.getElementById('receipt_no');
+            
+            const outGroup = document.getElementById('outsourced_group');
+            const outField = document.getElementById('event_name');
 
-            if (this.value === 'Pay Later') {
-                receiptGroup.style.display = 'none';
-                receiptField.removeAttribute('required');
-                receiptField.value = 'PENDING';
+            // Reset States
+            this.className = "w-full font-bold border-2 px-4 py-3 rounded-lg focus:outline-none focus:ring-0 transition-colors shadow-sm appearance-none cursor-pointer ";
+            
+            if (method === 'Others') {
+                // Outsource Mode (No Member, No Receipt, Require Event)
+                this.classList.add('bg-blue-50', 'border-blue-400', 'text-blue-700');
                 
-                payLaterGroup.classList.remove('hidden');
-                buyerName.setAttribute('required', 'required');
-                buyerContact.setAttribute('required', 'required');
+                memGroup.classList.add('hidden');
+                memField.removeAttribute('required');
                 
-                this.classList.add('border-red-500', 'text-red-700');
-                this.classList.remove('border-gray-300', 'text-gray-800');
+                recGroup.classList.add('hidden');
+                recField.removeAttribute('required');
+                
+                outGroup.classList.remove('hidden');
+                outField.setAttribute('required', 'required');
+                
+            } else if (method === 'Pay Later') {
+                // Pay Later Mode (Require Member, No Receipt)
+                this.classList.add('bg-red-50', 'border-red-400', 'text-red-700');
+                
+                memGroup.classList.remove('hidden');
+                memField.setAttribute('required', 'required');
+                
+                recGroup.classList.add('hidden');
+                recField.removeAttribute('required');
+                
+                outGroup.classList.add('hidden');
+                outField.removeAttribute('required');
+                
             } else {
-                receiptGroup.style.display = 'block';
-                receiptField.setAttribute('required', 'required');
-                if (receiptField.value === 'PENDING') receiptField.value = '';
-                receiptField.placeholder = (this.value === 'GCash') ? 'GCash Ref No. *' : 'Receipt No. / Invoice *';
-
-                payLaterGroup.classList.add('hidden');
-                buyerName.removeAttribute('required');
-                buyerContact.removeAttribute('required');
+                // Cash / GCash Mode (Require Member, Require Receipt)
+                this.classList.add('bg-white', 'border-gray-300', 'text-gray-800', 'hover:bg-gray-50');
                 
-                this.classList.remove('border-red-500', 'text-red-700');
-                this.classList.add('border-gray-300', 'text-gray-800');
+                memGroup.classList.remove('hidden');
+                memField.setAttribute('required', 'required');
+                
+                recGroup.classList.remove('hidden');
+                recField.setAttribute('required', 'required');
+                recField.placeholder = (method === 'GCash') ? 'GCash Ref No. *' : 'Receipt No. / Invoice *';
+                
+                outGroup.classList.add('hidden');
+                outField.removeAttribute('required');
             }
         });
 
-        // Search & Filtering
+        // --- UPGRADED SEARCH & FILTER ---
         function filterProducts() {
             let searchFilter = document.getElementById('posSearch').value.toLowerCase();
             let unitFilter = document.getElementById('posUnitFilter').value;
-            let cards = document.querySelectorAll('.product-card');
+            let sections = document.querySelectorAll('.category-section');
             
-            cards.forEach(card => {
-                let textMatch = card.textContent.toLowerCase().includes(searchFilter);
-                let unitMatch = (unitFilter === 'all') || (card.dataset.unit === unitFilter);
-                card.style.display = (textMatch && unitMatch) ? '' : 'none';
+            sections.forEach(section => {
+                let cards = section.querySelectorAll('.product-card');
+                let visibleCards = 0;
+                
+                cards.forEach(card => {
+                    let textMatch = card.dataset.name.includes(searchFilter);
+                    let unitMatch = (unitFilter === 'all') || (card.dataset.unit === unitFilter);
+                    
+                    if (textMatch && unitMatch) {
+                        card.style.display = '';
+                        visibleCards++;
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+                
+                // Hide the entire category section if all its products are hidden
+                section.style.display = (visibleCards > 0) ? '' : 'none';
             });
         }
         document.getElementById('posSearch').addEventListener('keyup', filterProducts);
 
-        // Sorting
         function sortProducts() {
-            let container = document.getElementById('products-grid');
-            let cards = Array.from(container.getElementsByClassName('product-card'));
             let sortType = document.getElementById('posSort').value;
+            let sections = document.querySelectorAll('.category-section');
 
-            cards.sort((a, b) => {
-                if (sortType === 'alpha_asc') return a.dataset.name.localeCompare(b.dataset.name);
-                if (sortType === 'alpha_desc') return b.dataset.name.localeCompare(a.dataset.name);
-                if (sortType === 'stock_desc') return parseInt(b.dataset.maxStock) - parseInt(a.dataset.maxStock);
-                if (sortType === 'stock_asc') return parseInt(a.dataset.maxStock) - parseInt(b.dataset.maxStock);
-                if (sortType === 'price_desc') return parseFloat(b.dataset.price) - parseFloat(a.dataset.price);
-                if (sortType === 'price_asc') return parseFloat(a.dataset.price) - parseFloat(b.dataset.price);
+            sections.forEach(section => {
+                let container = section.querySelector('.products-grid');
+                let cards = Array.from(container.querySelectorAll('.product-card'));
+
+                cards.sort((a, b) => {
+                    if (sortType === 'alpha_asc') return a.dataset.name.localeCompare(b.dataset.name);
+                    if (sortType === 'stock_desc') return parseInt(b.dataset.maxStock) - parseInt(a.dataset.maxStock);
+                    if (sortType === 'price_desc') return parseFloat(b.dataset.price) - parseFloat(a.dataset.price);
+                });
+
+                container.innerHTML = '';
+                cards.forEach(card => container.appendChild(card));
             });
-
-            container.innerHTML = '';
-            cards.forEach(card => container.appendChild(card));
         }
 
-        // Cart Logic
+        // --- CART LOGIC ---
         function addToCart(id, name, price, maxQty) {
             if (cart[id]) {
                 if (allowNegativeStock || cart[id].qty < maxQty) {
                     cart[id].qty++;
                 } else {
-                    showCustomAlert('Stock Limit Reached', `Cannot exceed current stock limit of <strong>${maxQty}</strong>.<br><br><em>(Negative Stock mapping is currently disabled in settings)</em>`, 'error');
+                    showCustomAlert('Stock Limit', `Cannot exceed current stock of <strong>${maxQty}</strong>.<br><br><em>(Negative Stock mapping disabled in settings)</em>`, 'error');
                 }
             } else {
                 if (allowNegativeStock || maxQty > 0) {
                     cart[id] = { name: name, price: price, qty: 1, max: maxQty };
                 } else {
-                    showCustomAlert('Out of Stock', `This item is completely out of stock.<br><br><em>(Negative Stock mapping is currently disabled in settings)</em>`, 'error');
+                    showCustomAlert('Out of Stock', `This item is completely out of stock.<br><br><em>(Negative Stock mapping disabled in settings)</em>`, 'error');
                 }
             }
             renderCart();
@@ -411,9 +535,9 @@ if ($res_units) {
         function updateQty(id, newQty) {
             let n = parseInt(newQty);
             if (!allowNegativeStock && n > cart[id].max) {
-                showCustomAlert('Stock Limit Reached', `Cannot manually enter a quantity higher than the current stock limit of <strong>${cart[id].max}</strong>.`, 'error');
+                showCustomAlert('Stock Limit', `Cannot manually enter a quantity higher than the current stock of <strong>${cart[id].max}</strong>.`, 'error');
                 cart[id].qty = cart[id].max;
-            } else if (n < 1) {
+            } else if (n < 1 || isNaN(n)) {
                 delete cart[id];
             } else {
                 cart[id].qty = n;
@@ -424,41 +548,44 @@ if ($res_units) {
         function renderCart() {
             const container = document.getElementById('cart-container');
             const totalEl = document.getElementById('cart-total-price');
-            container.innerHTML = '';
+            const countEl = document.getElementById('cart-item-count');
+            const emptyState = document.getElementById('cart-empty-state');
+            
+            // Clear current items (but keep empty state element)
+            Array.from(container.children).forEach(child => {
+                if(child.id !== 'cart-empty-state') child.remove();
+            });
+
             let total = 0;
-            let hasItems = false;
+            let itemsCount = 0;
 
             for (let id in cart) {
-                hasItems = true;
+                itemsCount++;
                 const item = cart[id];
                 const itemTotal = item.qty * item.price;
                 total += itemTotal;
 
-                container.innerHTML += `
-                    <div class="bg-white border border-gray-200 rounded-lg p-3 flex justify-between items-center shadow-sm">
+                container.insertAdjacentHTML('beforeend', `
+                    <div class="bg-white border border-gray-200 rounded-xl p-3 flex justify-between items-center shadow-sm relative z-10">
                         <div class="flex-1 pr-2">
                             <div class="font-bold text-sm text-gray-800 leading-tight mb-1">${item.name}</div>
-                            <div class="text-xs text-primary font-semibold">₱${item.price.toFixed(2)}</div>
+                            <div class="text-[11px] text-primary font-bold bg-purple-50 inline-block px-1.5 py-0.5 rounded border border-purple-100">₱${item.price.toFixed(2)} ea</div>
                         </div>
                         <div class="flex flex-col items-end gap-2">
-                            <div class="flex items-center border border-gray-300 rounded overflow-hidden h-8">
-                                <button type="button" onclick="updateQty(${id}, ${item.qty - 1})" class="px-2 bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors h-full"><i class="fas fa-minus text-xs"></i></button>
-                                <input type="number" value="${item.qty}" min="0" class="w-10 text-center text-sm font-bold outline-none h-full" onchange="updateQty(${id}, this.value)">
-                                <button type="button" onclick="updateQty(${id}, ${item.qty + 1})" class="px-2 bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors h-full"><i class="fas fa-plus text-xs"></i></button>
+                            <div class="flex items-center border border-gray-300 rounded-md overflow-hidden h-8 bg-gray-50">
+                                <button type="button" onclick="updateQty(${id}, ${item.qty - 1})" class="px-2 hover:bg-gray-200 text-gray-600 transition-colors h-full"><i class="fas fa-minus text-[10px]"></i></button>
+                                <input type="number" value="${item.qty}" min="0" class="w-10 text-center text-sm font-bold outline-none h-full bg-transparent" onchange="updateQty(${id}, this.value)">
+                                <button type="button" onclick="updateQty(${id}, ${item.qty + 1})" class="px-2 hover:bg-gray-200 text-gray-600 transition-colors h-full"><i class="fas fa-plus text-[10px]"></i></button>
                             </div>
-                            <div class="font-black text-gray-800">₱${itemTotal.toFixed(2)}</div>
+                            <div class="font-black text-gray-800 tracking-tight">₱${itemTotal.toFixed(2)}</div>
                         </div>
                     </div>
-                `;
+                `);
             }
 
-            if(!hasItems) container.innerHTML = `
-                <p class="text-gray-400 text-center text-sm py-10 flex flex-col items-center justify-center">
-                    <i class="fas fa-shopping-cart text-4xl mb-3 opacity-20"></i>
-                    Cart is empty
-                </p>`;
-            
+            emptyState.style.display = (itemsCount > 0) ? 'none' : 'flex';
             totalEl.innerText = total.toFixed(2);
+            countEl.innerText = itemsCount + (itemsCount === 1 ? ' Item' : ' Items');
             updateStockDisplay();
         }
 
@@ -484,7 +611,7 @@ if ($res_units) {
                 return;
             }
 
-            const cartArray = Object.keys(cart).map(id => ({ id: id, qty: cart[id].qty }));
+            const cartArray = Object.keys(cart).map(id => ({ id: id, name: cart[id].name, price: cart[id].price, qty: cart[id].qty }));
             document.getElementById('cart_data').value = JSON.stringify(cartArray);
             document.getElementById('checkoutForm').submit();
         }
