@@ -13,8 +13,8 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 
 $member_id = (int)$_GET['id'];
 
-// 1. Fetch Member Data
-$stmt = $conn->prepare("SELECT * FROM members WHERE member_id = ?");
+// 1. Fetch Member Data (same fields imported by import_excel.php)
+$stmt = $conn->prepare("SELECT member_id, form_id, first_name, middle_name, last_name, date_of_birth, birth_place, civil_status, religion, sex, tribe, sss_gsis_no, tin_no, postal_code, address, business_office_address, educational_attainment, present_employment_business, occupation, monthly_income FROM members WHERE member_id = ?");
 $stmt->bind_param("i", $member_id);
 $stmt->execute();
 $member_result = $stmt->get_result();
@@ -29,8 +29,8 @@ if ($member_result->num_rows === 0) {
 $member = $member_result->fetch_assoc();
 $stmt->close();
 
-// 2. Fetch Beneficiaries Data
-$stmt_ben = $conn->prepare("SELECT * FROM beneficiaries WHERE member_id = ?");
+// 2. Fetch Beneficiaries Data (same fields imported by import_excel.php)
+$stmt_ben = $conn->prepare("SELECT beneficiary_id, member_id, first_name, middle_name, last_name, date_of_birth, relationship FROM beneficiaries WHERE member_id = ?");
 $stmt_ben->bind_param("i", $member_id);
 $stmt_ben->execute();
 $beneficiaries_result = $stmt_ben->get_result();

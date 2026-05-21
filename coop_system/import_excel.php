@@ -14,26 +14,30 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
 
     // 1. THE HEADER THESAURUS (Alias Mapping)
     $header_aliases = [
-        'form_id'      => ['formid', 'id', 'formno'],
-        'member_name'  => ['membername', 'name', 'fullname', 'membersname'],
-        'dob'          => ['dateofbirth', 'dob', 'birthdate'],
-        'birth_place'  => ['birthplace', 'placeofbirth'],
-        'civil_status' => ['civilstatus', 'status'],
-        'religion'     => ['religion'],
-        'sex'          => ['sex', 'gender'],
-        'tribe'        => ['tribe'],
-        'sss_no'       => ['sssgsisno', 'sssno', 'gsisno', 'sss'],
-        'tin_no'       => ['tinno', 'tin'],
-        'postal_code'  => ['postalcode', 'zipcode'],
-        'address'      => ['address', 'homeaddress'],
-        'business_add' => ['businessofficeaddress', 'businessaddress', 'officeaddress'],
-        'education'    => ['educationalattainment', 'education', 'attainment'],
-        'employment'   => ['presentemploymentbusinessactivities', 'presentemployment', 'businessactivities', 'employment'],
-        'occupation'   => ['occupation', 'job'],
-        'income'       => ['monthlyincome', 'income'],
-        'ben_name'     => ['beneficiariesnames', 'beneficiariesname', 'beneficiaryname', 'beneficiary', 'benname'],
-        'ben_dob'      => ['beneficiariesdateofbirth', 'beneficiarydateofbirth', 'bendob'],
-        'ben_rel'      => ['relationshiptothemember', 'relationship', 'rel']
+        'form_id'           => ['formid', 'id', 'formno'],
+        'member_name'       => ['membername', 'name', 'fullname', 'membersname'],
+        'member_first_name' => ['memberfirstname', 'firstname'],
+        'member_second_name'=> ['membersecondname', 'secondname'],
+        'member_middle_name'=> ['membermiddlename', 'middlename'],
+        'member_last_name'  => ['memberlastname', 'lastname'],
+        'dob'               => ['dateofbirth', 'dob', 'birthdate'],
+        'birth_place'       => ['birthplace', 'placeofbirth'],
+        'civil_status'      => ['civilstatus', 'status'],
+        'religion'          => ['religion'],
+        'sex'               => ['sex', 'gender'],
+        'tribe'             => ['tribe'],
+        'sss_no'            => ['sssgsisno', 'sssno', 'gsisno', 'sss'],
+        'tin_no'            => ['tinno', 'tin'],
+        'postal_code'       => ['postalcode', 'zipcode'],
+        'address'           => ['address', 'homeaddress'],
+        'business_add'      => ['businessofficeaddress', 'businessaddress', 'officeaddress'],
+        'education'         => ['educationalattainment', 'education', 'attainment'],
+        'employment'        => ['presentemploymentbusinessactivities', 'presentemployment', 'businessactivities', 'employment'],
+        'occupation'        => ['occupation', 'job'],
+        'income'            => ['monthlyincome', 'income'],
+        'ben_name'          => ['beneficiariesnames', 'beneficiariesname', 'beneficiaryname', 'beneficiary', 'benname'],
+        'ben_dob'           => ['beneficiariesdateofbirth', 'beneficiarydateofbirth', 'bendob'],
+        'ben_rel'           => ['relationshiptothemember', 'relationship', 'rel']
     ];
 
     $res_map = $conn->query("SELECT system_field, excel_header_name FROM config_excel_headers");
@@ -152,7 +156,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
                 foreach ($header_aliases as $sys_field => $aliases) {
                     if (in_array($clean_col, $aliases)) {
                         $excel_header_index_map[$sys_field] = $col_index;
-                        if ($sys_field === 'form_id' || $sys_field === 'member_name') {
+                        if ($sys_field === 'form_id' || $sys_field === 'member_name' || $sys_field === 'member_first_name' || $sys_field === 'member_last_name') {
                             $is_header_row = true;
                         }
                         break;
@@ -182,17 +186,32 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         $row = $rows[$i];
         if (!is_array($row)) continue;
 
-        $form_id        = getVal($row, $excel_header_index_map, 'form_id');
-        $full_name      = getVal($row, $excel_header_index_map, 'member_name');
-        $ben_name       = getVal($row, $excel_header_index_map, 'ben_name');
+        $form_id            = getVal($row, $excel_header_index_map, 'form_id');
+        $full_name          = getVal($row, $excel_header_index_map, 'member_name');
+        $member_first       = getVal($row, $excel_header_index_map, 'member_first_name');
+        $member_second      = getVal($row, $excel_header_index_map, 'member_second_name');
+        $member_middle      = getVal($row, $excel_header_index_map, 'member_middle_name');
+        $member_last        = getVal($row, $excel_header_index_map, 'member_last_name');
+        $ben_name           = getVal($row, $excel_header_index_map, 'ben_name');
 
-        if (empty($full_name) && empty($ben_name)) {
+        $has_member_name = !empty($full_name) || !empty($member_first) || !empty($member_last) || !empty($member_middle) || !empty($member_second);
+        if (!$has_member_name && empty($ben_name)) {
             continue;
         }
 
         // -- 1. PROCESS MEMBER --
-        if (!empty($full_name)) {
-            list($last_name, $first_name, $middle_name) = splitName($full_name, true);
+        if ($has_member_name) {
+            if (!empty($member_last) || !empty($member_first) || !empty($member_middle) || !empty($member_second)) {
+                $last_name = $member_last;
+                $first_name = trim($member_first . (!empty($member_second) ? ' ' . $member_second : ''));
+                $middle_name = $member_middle;
+
+                if (empty($last_name) && !empty($full_name)) {
+                    list($last_name, $first_name, $middle_name) = splitName($full_name, true);
+                }
+            } else {
+                list($last_name, $first_name, $middle_name) = splitName($full_name, true);
+            }
 
             $dob_val = isset($excel_header_index_map['dob']) ? $row[$excel_header_index_map['dob']] : '';
             $dob = parseDate($dob_val);

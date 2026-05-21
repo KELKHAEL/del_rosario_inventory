@@ -496,28 +496,117 @@ if ($setting_res && $setting_res->num_rows > 0) {
                                 <span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded font-semibold border border-yellow-200">Advanced Config</span>
                             </div>
                             <div class="p-4 overflow-x-auto">
-                                <p class="text-xs text-gray-500 mb-4">These define what column names the system looks for when uploading an Excel file. Our new system auto-detects aliases, but you can override them here if needed.</p>
+                                <p class="text-xs text-gray-500 mb-4">The Membership Importer supports both full-name and split-name formats. It auto-detects these headers and maps them into the members table.</p>
                                 
-                                <table class="w-full text-sm text-left text-gray-600 whitespace-nowrap">
-                                    <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
-                                        <tr>
-                                            <th class="px-4 py-2 font-semibold">System Database Field</th>
-                                            <th class="px-4 py-2 font-semibold">Expected Excel Header Name</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="divide-y divide-gray-100">
-                                        <?php if(empty($excel_headers)): ?>
-                                            <tr><td colspan="2" class="px-4 py-4 text-center text-gray-400 italic">No custom mappings defined. Using system defaults.</td></tr>
-                                        <?php else: ?>
-                                            <?php foreach($excel_headers as $eh): ?>
-                                                <tr class="hover:bg-gray-50">
-                                                    <td class="px-4 py-2 font-mono text-xs text-primary"><?= htmlspecialchars($eh['system_field']) ?></td>
-                                                    <td class="px-4 py-2 font-medium text-gray-800"><?= htmlspecialchars($eh['excel_header_name']) ?></td>
-                                                </tr>
-                                            <?php endforeach; ?>
-                                        <?php endif; ?>
-                                    </tbody>
-                                </table>
+                                <div class="mb-6 bg-gray-50 border border-gray-200 rounded-xl p-4">
+                                    <p class="text-sm font-semibold text-gray-800 mb-3">Membership Import Format</p>
+                                    <table class="w-full text-sm text-left text-gray-600 whitespace-nowrap">
+                                        <thead class="text-xs text-gray-500 uppercase bg-white border-b border-gray-200">
+                                            <tr>
+                                                <th class="px-4 py-2 font-semibold">Data Required</th>
+                                                <th class="px-4 py-2 font-semibold">Accepted Excel Column Names</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-100">
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Form ID</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Form ID, ID, Form No</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Member Name</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Member Name, Name, Full Name, Members Name</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Member First Name</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Member First Name, Firstname</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Member Second Name (Optional)</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Member Second Name, Secondname</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Member Middle Name</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Member Middle Name, Middlename</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Member Last Name</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Member Last Name, Lastname</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Date of Birth</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Date of Birth, DOB, Birth Date</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Birth Place</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Birth Place, Place of Birth</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Civil Status</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Civil Status, Status</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Religion</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Religion</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Sex</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Sex, Gender</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Tribe</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Tribe</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">SSS / GSIS No.</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">SSS/GSIS No., SSS No, GSIS No, SSS</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">TIN No.</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">TIN No., TIN</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Postal Code</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Postal Code, Zip Code</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Address</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Address, Home Address</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Business / Office Address</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Business - Office Address, Business Address, Office Address</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Educational Attainment</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Educational Attainment, Education, Attainment</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Present Employment / Business Activities</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Present Employment/Business Activities, Present Employment, Business Activities, Employment</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Occupation</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Occupation, Job</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Monthly Income</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Monthly Income, Income</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Beneficiaries Name</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Beneficiaries Name, Beneficiary Name, Beneficiary, Ben Name</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Beneficiaries Date of Birth</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Beneficiaries Date of Birth, Beneficiary Date of Birth, Ben DOB</td>
+                                            </tr>
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-2 font-bold text-gray-800">Relationship to the Member</td>
+                                                <td class="px-4 py-2 font-mono text-xs text-primary">Relationship to the Member, Relationship, Rel</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -546,6 +635,22 @@ if ($setting_res && $setting_res->num_rows > 0) {
                                         <tr class="hover:bg-gray-50">
                                             <td class="px-4 py-2 font-bold text-gray-800">Member Name</td>
                                             <td class="px-4 py-2 font-mono text-xs text-blue-600">PACC Member Name, Member Name, Name, Customer</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Member First Name</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Member First Name, Firstname</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Member Second Name (Optional)</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Member Second Name, Second Name</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Member Middle Name</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Member Middle Name, Middle Name</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Member Last Name</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Member Last Name, Last Name</td>
                                         </tr>
                                         <tr class="hover:bg-gray-50">
                                             <td class="px-4 py-2 font-bold text-gray-800">Quantity</td>
@@ -596,7 +701,7 @@ if ($setting_res && $setting_res->num_rows > 0) {
                                 <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded font-semibold border border-green-200">System Aliases</span>
                             </div>
                             <div class="p-4 overflow-x-auto">
-                                <p class="text-xs text-gray-500 mb-4">When importing Member Shares, please format your Excel file using the exact columns below. The importer will strictly link these payments to existing members.</p>
+                                <p class="text-xs text-gray-500 mb-4">When importing Member Shares, please format your Excel file using the accepted columns below. The importer will strictly link these payments to existing members.</p>
                                 
                                 <table class="w-full text-sm text-left text-gray-600 whitespace-nowrap">
                                     <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
@@ -612,7 +717,7 @@ if ($setting_res && $setting_res->num_rows > 0) {
                                         </tr>
                                         <tr class="hover:bg-gray-50">
                                             <td class="px-4 py-2 font-bold text-gray-800">First Name</td>
-                                            <td class="px-4 py-2 font-mono text-xs text-green-600">Member Firstname, First Name</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-green-600">Member First Name, Firstname</td>
                                         </tr>
                                         <tr class="hover:bg-gray-50">
                                             <td class="px-4 py-2 font-bold text-gray-800">Second Name (Optional)</td>
@@ -631,7 +736,7 @@ if ($setting_res && $setting_res->num_rows > 0) {
                                             <td class="px-4 py-2 font-mono text-xs text-green-600">Transaction Type, Type</td>
                                         </tr>
                                         <tr class="hover:bg-gray-50">
-                                            <td class="px-4 py-2 font-bold text-gray-800">Payment Amount</td>
+                                            <td class="px-4 py-2 font-bold text-gray-800">Amount</td>
                                             <td class="px-4 py-2 font-mono text-xs text-green-600">Payment Amount, Payment, Amount</td>
                                         </tr>
                                     </tbody>

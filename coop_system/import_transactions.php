@@ -25,18 +25,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
 
     // 1. HEADER ALIASES
     $header_aliases = [
-        'date'         => ['dateoftransaction', 'date', 'transactiondate'],
-        'member_name'  => ['paccmembername', 'membername', 'name', 'customer'],
-        'qty'          => ['quantity', 'qty'],
-        'item_desc'    => ['itemdescription', 'description', 'item', 'items'],
-        'price'        => ['sellingprice', 'price', 'unitprice'],
-        'item_amount'  => ['amountofitem', 'itemamount'],
-        'total_amount' => ['totalamount', 'total', 'amount'],
-        'payment_date' => ['dateofpayment', 'paymentdate'],
-        'downpayment'  => ['downpaymentamount', 'downpayment', 'dp'],
-        'invoice'      => ['invoice', 'invoiceno', 'receipt'],
-        'balance'      => ['remainingbalance', 'balance', 'remaining'],
-        'status'       => ['paymentstatus', 'status']
+        'date'               => ['dateoftransaction', 'date', 'transactiondate'],
+        'member_name'        => ['paccmembername', 'membername', 'name', 'customer'],
+        'member_first_name'  => ['memberfirstname', 'firstname'],
+        'member_second_name' => ['membersecondname', 'secondname'],
+        'member_middle_name' => ['membermiddlename', 'middlename'],
+        'member_last_name'   => ['memberlastname', 'lastname'],
+        'qty'                => ['quantity', 'qty'],
+        'item_desc'          => ['itemdescription', 'description', 'item', 'items'],
+        'price'              => ['sellingprice', 'price', 'unitprice'],
+        'item_amount'        => ['amountofitem', 'itemamount'],
+        'total_amount'       => ['totalamount', 'total', 'amount'],
+        'payment_date'       => ['dateofpayment', 'paymentdate'],
+        'downpayment'        => ['downpaymentamount', 'downpayment', 'dp'],
+        'invoice'            => ['invoice', 'invoiceno', 'receipt'],
+        'balance'            => ['remainingbalance', 'balance', 'remaining'],
+        'status'             => ['paymentstatus', 'status']
     ];
 
     // 2. HELPER FUNCTIONS
@@ -112,7 +116,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
                 foreach ($header_aliases as $sys_field => $aliases) {
                     if (in_array($clean_col, $aliases)) {
                         $excel_map[$sys_field] = $col_idx;
-                        if ($sys_field === 'member_name' || $sys_field === 'date') $is_header = true;
+                        if ($sys_field === 'member_name' || $sys_field === 'member_first_name' || $sys_field === 'member_last_name' || $sys_field === 'date') {
+                            $is_header = true;
+                        }
                         break;
                     }
                 }
@@ -136,7 +142,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_FILES['excel_file'])) {
         if (!is_array($row)) continue;
 
         $cell_name = getVal($row, $excel_map, 'member_name');
+        $cell_first = getVal($row, $excel_map, 'member_first_name');
+        $cell_second = getVal($row, $excel_map, 'member_second_name');
+        $cell_middle = getVal($row, $excel_map, 'member_middle_name');
+        $cell_last = getVal($row, $excel_map, 'member_last_name');
         $cell_date = getVal($row, $excel_map, 'date');
+
+        if (empty($cell_name) && (!empty($cell_first) || !empty($cell_last) || !empty($cell_middle) || !empty($cell_second))) {
+            $parts = [];
+            if ($cell_last !== '') $parts[] = $cell_last . ',';
+            if ($cell_first !== '') $parts[] = $cell_first;
+            if ($cell_second !== '') $parts[] = $cell_second;
+            if ($cell_middle !== '') $parts[] = $cell_middle;
+            $cell_name = trim(implode(' ', $parts));
+        }
 
         // If the row has a name or date, it is a NEW transaction block
         if (!empty($cell_name) || !empty($cell_date)) {
