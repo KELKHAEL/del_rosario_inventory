@@ -76,6 +76,9 @@ if ($countResult && $countResult->num_rows > 0) {
                 <a href="index.php" class="flex items-center px-6 py-3 bg-primary text-white font-semibold border-l-4 border-primaryDark">
                     <i class="fas fa-users w-6"></i> MEMBERSHIP DIRECTORY
                 </a>
+                <a href="member_shares.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-hand-holding-usd w-6"></i> MEMBER SHARES
+                </a>
                 <a href="transactions.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
                     <i class="fas fa-receipt w-6"></i> TRANSACTIONS
                 </a>

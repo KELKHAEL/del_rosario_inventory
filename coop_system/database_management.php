@@ -206,6 +206,9 @@ if ($setting_res && $setting_res->num_rows > 0) {
                 <a href="index.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
                     <i class="fas fa-users w-6"></i> MEMBERSHIP DIRECTORY
                 </a>
+                <a href="member_shares.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-hand-holding-usd w-6"></i> MEMBER SHARES
+                </a>
                 <a href="transactions.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
                     <i class="fas fa-receipt w-6"></i> TRANSACTIONS
                 </a>
@@ -247,7 +250,13 @@ if ($setting_res && $setting_res->num_rows > 0) {
                                 <i class="fas fa-boxes mr-2"></i>Inventory Settings
                             </button>
                             <button onclick="switchTab('excel')" id="btn-excel" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
-                                <i class="fas fa-file-excel mr-2"></i>Excel Imports
+                                <i class="fas fa-file-excel mr-2"></i>Excel Memberships
+                            </button>
+                            <button onclick="switchTab('transac')" id="btn-transac" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                                <i class="fas fa-file-invoice-dollar mr-2"></i>Excel Transactions
+                            </button>
+                            <button onclick="switchTab('shares')" id="btn-shares" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                                <i class="fas fa-hand-holding-usd mr-2"></i>Excel Shares
                             </button>
                         </nav>
                     </div>
@@ -507,6 +516,124 @@ if ($setting_res && $setting_res->num_rows > 0) {
                                                 </tr>
                                             <?php endforeach; ?>
                                         <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="tab-transac" class="tab-content hidden">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
+                            <div class="p-4 border-b border-gray-100 bg-gray-50 rounded-t-xl flex justify-between items-center">
+                                <h3 class="font-bold text-gray-800"><i class="fas fa-file-invoice-dollar text-blue-600 mr-2"></i>Transactions Import Format Guide</h3>
+                                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-semibold border border-blue-200">System Aliases</span>
+                            </div>
+                            <div class="p-4 overflow-x-auto">
+                                <p class="text-xs text-gray-500 mb-4">The Transactions Importer uses a Smart Engine. Ensure your Excel file uses one of the accepted column names below. It ignores capitalization and spaces.</p>
+                                
+                                <table class="w-full text-sm text-left text-gray-600 whitespace-nowrap">
+                                    <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                            <th class="px-4 py-2 font-semibold">Data Required</th>
+                                            <th class="px-4 py-2 font-semibold">Accepted Excel Column Names</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100">
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Date</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Date of Transaction, Date, Transaction Date</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Member Name</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">PACC Member Name, Member Name, Name, Customer</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Quantity</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Quantity, Qty</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Item Description</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Item Description, Description, Item, Items</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Selling Price</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Selling Price, Price, Unit Price</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Amount of Item</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Amount of Item, Item Amount</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Total Amount</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Total Amount, Total, Amount</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Downpayment</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Downpayment Amount, Downpayment, DP</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Invoice</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Invoice, Invoice No, Receipt</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Balance</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Remaining Balance, Balance, Remaining</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Status</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-blue-600">Payment Status, Status</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="tab-shares" class="tab-content hidden">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
+                            <div class="p-4 border-b border-gray-100 bg-gray-50 rounded-t-xl flex justify-between items-center">
+                                <h3 class="font-bold text-gray-800"><i class="fas fa-hand-holding-usd text-green-600 mr-2"></i>Membership Shares Import Format</h3>
+                                <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded font-semibold border border-green-200">System Aliases</span>
+                            </div>
+                            <div class="p-4 overflow-x-auto">
+                                <p class="text-xs text-gray-500 mb-4">When importing Member Shares, please format your Excel file using the exact columns below. The importer will strictly link these payments to existing members.</p>
+                                
+                                <table class="w-full text-sm text-left text-gray-600 whitespace-nowrap">
+                                    <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                            <th class="px-4 py-2 font-semibold">Data Required</th>
+                                            <th class="px-4 py-2 font-semibold">Accepted Excel Column Names</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100">
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Date</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-green-600">Date of Transaction, Date</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">First Name</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-green-600">Member Firstname, First Name</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Second Name (Optional)</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-green-600">Member Second Name, Second Name</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Middle Name</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-green-600">Member Middle Name, Middle Name</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Last Name</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-green-600">Member Last Name, Last Name</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Transaction Type</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-green-600">Transaction Type, Type</td>
+                                        </tr>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-bold text-gray-800">Payment Amount</td>
+                                            <td class="px-4 py-2 font-mono text-xs text-green-600">Payment Amount, Payment, Amount</td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>

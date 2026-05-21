@@ -196,6 +196,9 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
                 <a href="index.php" class="flex items-center px-6 py-3 bg-primary text-white font-semibold border-l-4 border-primaryDark">
                     <i class="fas fa-users w-6"></i> MEMBERSHIP DIRECTORY
                 </a>
+                <a href="member_shares.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
+                    <i class="fas fa-hand-holding-usd w-6"></i> MEMBER SHARES
+                </a>
                 <a href="transactions.php" class="flex items-center px-6 py-3 text-gray-600 hover:bg-purple-50 hover:text-primary font-semibold transition-colors">
                     <i class="fas fa-receipt w-6"></i> TRANSACTIONS
                 </a>
@@ -342,7 +345,24 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
 
                     <div class="w-full xl:w-[450px] shrink-0 bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden no-print xl:sticky xl:top-8 mb-12">
                         
-                        <div class="bg-primary text-white p-5 flex justify-between items-center shadow-md relative z-10">
+                        <?php
+                            // Calculate Totals for this specific member
+                            $member_total_shares = 0;
+                            $member_total_fees = 0;
+                            foreach($member_transactions as $mt) {
+                                $stat = strtolower($mt['payment_status'] ?? '');
+                                if ($stat === 'completed' || strpos($stat, 'paid') !== false) {
+                                    $type = strtolower($mt['transaction_type'] ?? '');
+                                    if (strpos($type, 'share') !== false) {
+                                        $member_total_shares += (float)$mt['amount'];
+                                    } elseif (strpos($type, 'fee') !== false) {
+                                        $member_total_fees += (float)$mt['amount'];
+                                    }
+                                }
+                            }
+                        ?>
+
+                        <div class="bg-primary text-white p-5 flex justify-between items-center shadow-md relative z-20">
                             <div>
                                 <h4 class="font-bold text-lg"><i class="fas fa-receipt mr-2"></i> Transaction History</h4>
                                 <p class="text-purple-200 text-xs mt-1 capitalize"><?= htmlspecialchars($member['first_name'] . ' ' . $member['last_name']) ?></p>
@@ -350,7 +370,18 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
                             <span class="bg-purple-800 text-white px-3 py-1 rounded-full text-xs font-bold border border-purple-600 shadow-inner"><?= count($member_transactions) ?> Records</span>
                         </div>
 
-                        <div class="p-5 max-h-[70vh] overflow-y-auto flex flex-col gap-4 bg-gray-50">
+                        <div class="bg-purple-50 p-4 border-b border-purple-100 flex justify-between items-center relative z-10 shadow-sm">
+                            <div class="text-center w-1/2 border-r border-purple-200">
+                                <div class="text-[10px] text-purple-600 font-bold uppercase tracking-wider mb-1"><i class="fas fa-chart-pie mr-1"></i> Total Shares</div>
+                                <div class="text-lg font-black text-green-600">₱<?= number_format($member_total_shares, 2) ?></div>
+                            </div>
+                            <div class="text-center w-1/2">
+                                <div class="text-[10px] text-purple-600 font-bold uppercase tracking-wider mb-1"><i class="fas fa-id-card mr-1"></i> Total Fees</div>
+                                <div class="text-lg font-black text-blue-600">₱<?= number_format($member_total_fees, 2) ?></div>
+                            </div>
+                        </div>
+
+                        <div class="p-5 max-h-[60vh] overflow-y-auto flex flex-col gap-4 bg-gray-50">
                             <?php if (count($member_transactions) > 0): ?>
                                 <?php foreach($member_transactions as $trans): ?>
                                     <?php 
@@ -360,24 +391,42 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
                                         } else {
                                             $stat_badge = "<span class='bg-red-100 text-red-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase border border-red-200'>$status</span>";
                                         }
+
+                                        // Determine visual styling based on the transaction type
+                                        $t_type = $trans['transaction_type'] ?? 'PURCHASE';
+                                        if (stripos($t_type, 'share') !== false) {
+                                            $type_icon = "<i class='fas fa-chart-pie text-green-600 mr-1'></i> <span class='text-green-700 font-bold uppercase tracking-wider text-[10px]'>Share Capital</span>";
+                                        } elseif (stripos($t_type, 'fee') !== false) {
+                                            $type_icon = "<i class='fas fa-id-card text-blue-600 mr-1'></i> <span class='text-blue-700 font-bold uppercase tracking-wider text-[10px]'>Membership Fee</span>";
+                                        } else {
+                                            $type_icon = "<i class='fas fa-shopping-bag text-primary mr-1'></i> <span class='text-primary font-bold uppercase tracking-wider text-[10px]'>Purchase</span>";
+                                        }
                                     ?>
-                                    <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                                    <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
                                         <div class="flex justify-between items-start mb-3 pb-3 border-b border-gray-100">
                                             <div>
-                                                <div class="text-xs text-gray-500 font-bold uppercase"><i class="far fa-calendar-alt mr-1"></i> <?= date('M d, Y', strtotime($trans['transaction_date'])) ?></div>
-                                                <div class="text-sm font-mono text-primary font-bold mt-1">INV: <?= htmlspecialchars($trans['invoice_no'] ?? 'N/A') ?></div>
+                                                <div class="text-xs text-gray-500 font-bold uppercase mb-1"><i class="far fa-calendar-alt mr-1"></i> <?= date('M d, Y', strtotime($trans['transaction_date'])) ?></div>
+                                                <div class="flex items-center gap-2">
+                                                    <?= $type_icon ?>
+                                                    <span class="text-gray-300">|</span>
+                                                    <span class="text-xs font-mono text-gray-500">REF: <?= htmlspecialchars($trans['invoice_no'] ?? 'N/A') ?></span>
+                                                </div>
                                             </div>
                                             <?= $stat_badge ?>
                                         </div>
                                         
                                         <div class="text-xs text-gray-700 font-mono leading-relaxed mb-4 bg-gray-50 p-2.5 rounded border border-gray-100">
-                                            <?= nl2br(htmlspecialchars($trans['items_details'] ?? $trans['transaction_type'])) ?>
+                                            <?= nl2br(htmlspecialchars($trans['items_details'] ?? $t_type)) ?>
                                         </div>
                                         
                                         <div class="flex justify-between items-end">
                                             <div class="text-[11px] text-gray-500 leading-tight">
-                                                Downpayment: ₱<?= number_format($trans['downpayment'] ?? 0, 2) ?><br>
-                                                <span class="<?= ($trans['remaining_balance'] > 0) ? 'text-red-500 font-bold' : 'text-gray-500' ?>">Balance: ₱<?= number_format($trans['remaining_balance'] ?? 0, 2) ?></span>
+                                                <?php if(stripos($t_type, 'purchase') !== false || $trans['remaining_balance'] > 0): ?>
+                                                    Downpayment: ₱<?= number_format($trans['downpayment'] ?? 0, 2) ?><br>
+                                                    <span class="<?= ($trans['remaining_balance'] > 0) ? 'text-red-500 font-bold' : 'text-gray-500' ?>">Balance: ₱<?= number_format($trans['remaining_balance'] ?? 0, 2) ?></span>
+                                                <?php else: ?>
+                                                    <span class="text-gray-400 italic"><i class="fas fa-check text-green-400 mr-1"></i>Fully Paid</span>
+                                                <?php endif; ?>
                                             </div>
                                             <div class="text-lg font-black text-gray-900">
                                                 ₱<?= number_format($trans['amount'], 2) ?>
@@ -392,7 +441,6 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
                                 </div>
                             <?php endif; ?>
                         </div>
-
                     </div>
 
                 </div>
