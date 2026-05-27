@@ -66,6 +66,146 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
     }
 }
+
+$today = date('Y-m-d');
+
+function inventoryReportDate($value, $fallback, $today) {
+    $value = trim((string)$value);
+    if ($value === '') {
+        return $fallback;
+    }
+
+    $date = DateTime::createFromFormat('Y-m-d', $value);
+    $errors = DateTime::getLastErrors();
+    if ($date === false || ($errors && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+        return $fallback;
+    }
+
+    $normalized = $date->format('Y-m-d');
+    return ($normalized > $today) ? $today : $normalized;
+}
+
+function inventoryReportDateLabel($date) {
+    return date('F d, Y', strtotime($date));
+}
+
+$report_date = inventoryReportDate($_GET['report_date'] ?? ($_GET['report_to'] ?? ($_GET['report_from'] ?? $today)), $today, $today);
+$report_from = $report_date;
+$report_to = $report_date;
+
+$sort_options = [
+    'alpha' => 'Product Name (A-Z)',
+    'qty_asc' => 'Quantity (Lowest to Highest)',
+    'qty_desc' => 'Quantity (Highest to Lowest)'
+];
+$report_sort = $_GET['sort'] ?? 'alpha';
+if (!isset($sort_options[$report_sort])) {
+    $report_sort = 'alpha';
+}
+
+if ($report_sort === 'qty_asc') {
+    $order_by = "product_type ASC, current_quantity ASC, product_name ASC";
+} elseif ($report_sort === 'qty_desc') {
+    $order_by = "product_type ASC, current_quantity DESC, product_name ASC";
+} else {
+    $order_by = "product_type ASC, product_name ASC";
+}
+
+$inventory_rows = [];
+$inventory_result = $conn->query("SELECT * FROM inventory ORDER BY $order_by");
+if ($inventory_result && $inventory_result->num_rows > 0) {
+    while ($row = $inventory_result->fetch_assoc()) {
+        $inventory_rows[] = $row;
+    }
+}
+
+$stat_total = count($inventory_rows);
+$stat_low = 0;
+$stat_val = 0;
+$report_total_qty = 0;
+foreach ($inventory_rows as $row) {
+    $qty = (int)$row['current_quantity'];
+    $price = (float)$row['price'];
+    if ($qty < 5) {
+        $stat_low++;
+    }
+    if ($qty > 0) {
+        $stat_val += $qty * $price;
+    }
+    $report_total_qty += $qty;
+}
+
+if (isset($_GET['export']) && $_GET['export'] === 'excel') {
+    require_once __DIR__ . '/vendor/autoload.php';
+
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Daily Inventory Report');
+
+    $report_date_label = inventoryReportDateLabel($report_date);
+
+    $sheet->mergeCells('A1:G1');
+    $sheet->mergeCells('A2:G2');
+    $sheet->setCellValue('A1', 'Daily Inventory Report');
+    $sheet->setCellValue('A2', 'Date: ' . $report_date_label);
+
+    $sheet->getStyle('A:G')->getFont()->setName('Arial')->setSize(12);
+    $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+    $sheet->getStyle('A1:A2')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+
+    $row_num = 4;
+    $current_category = null;
+
+    foreach ($inventory_rows as $row) {
+        if ($current_category !== $row['product_type']) {
+            $current_category = $row['product_type'];
+            $sheet->mergeCells("A{$row_num}:G{$row_num}");
+            $sheet->setCellValue("A{$row_num}", strtoupper($current_category));
+            $sheet->getStyle("A{$row_num}:G{$row_num}")->getFont()->setBold(true);
+            $sheet->getStyle("A{$row_num}:G{$row_num}")->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setARGB('FFEFE7F7');
+            $row_num++;
+
+            $sheet->fromArray(['Product Name', 'Category', 'Unit', 'Quantity', 'Status', 'Price', 'Inventory Value'], null, "A{$row_num}");
+            $sheet->getStyle("A{$row_num}:G{$row_num}")->getFont()->setBold(true);
+            $row_num++;
+        }
+
+        $qty = (int)$row['current_quantity'];
+        $price = (float)$row['price'];
+        $status = ($qty <= 0) ? 'OUT OF STOCK' : (($qty < 5) ? 'LOW STOCK' : 'IN STOCK');
+        $sheet->setCellValue("A{$row_num}", $row['product_name']);
+        $sheet->setCellValue("B{$row_num}", $row['product_type']);
+        $sheet->setCellValue("C{$row_num}", $row['quantity_type']);
+        $sheet->setCellValue("D{$row_num}", $qty);
+        $sheet->setCellValue("E{$row_num}", $status);
+        $sheet->setCellValue("F{$row_num}", $price);
+        $sheet->setCellValue("G{$row_num}", $qty * $price);
+        $row_num++;
+    }
+
+    $row_num++;
+    $sheet->setCellValue("C{$row_num}", 'Total Quantity');
+    $sheet->setCellValue("D{$row_num}", $report_total_qty);
+    $sheet->setCellValue("F{$row_num}", 'Total Value');
+    $sheet->setCellValue("G{$row_num}", $stat_val);
+    $sheet->getStyle("C{$row_num}:G{$row_num}")->getFont()->setBold(true);
+
+    foreach (range('A', 'G') as $column) {
+        $sheet->getColumnDimension($column)->setAutoSize(true);
+    }
+    $sheet->getStyle('F:G')->getNumberFormat()->setFormatCode('#,##0.00');
+
+    $filename = 'Daily_Inventory_Report_' . $report_date . '.xlsx';
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+
+    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit();
+}
 ?>
 
 <!DOCTYPE html>
@@ -89,6 +229,99 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
     </script>
+    <style>
+        .report-print-header { display: none; }
+        @media print {
+            @page {
+                margin: 14mm;
+            }
+            html,
+            body {
+                background: #ffffff !important;
+                overflow: visible !important;
+                height: auto !important;
+                font-family: Arial, sans-serif !important;
+                font-size: 12px !important;
+            }
+            .print\:hidden {
+                display: none !important;
+            }
+            .h-screen,
+            .overflow-hidden,
+            .overflow-y-auto,
+            .overflow-x-auto {
+                height: auto !important;
+                max-height: none !important;
+                overflow: visible !important;
+            }
+            main,
+            main > div {
+                display: block !important;
+                height: auto !important;
+                overflow: visible !important;
+                width: 100% !important;
+                padding: 0 !important;
+            }
+            .report-print-header {
+                display: block !important;
+                margin-bottom: 12px;
+                color: #111827;
+                text-align: center;
+                font-family: Arial, sans-serif !important;
+            }
+            .report-print-title {
+                font-size: 20px !important;
+                font-weight: 700;
+                margin: 0 0 12px 0;
+            }
+            .report-print-date {
+                font-size: 15px !important;
+                font-weight: 300;
+                margin: 0 0 5px 0;
+            }
+            #inventoryReportCard {
+                border: none !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                overflow: visible !important;
+            }
+            #inventoryReportTable {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                white-space: normal !important;
+                font-family: Arial, sans-serif !important;
+                font-size: 12px !important;
+            }
+            #inventoryReportTable th,
+            #inventoryReportTable td {
+                border: 1px solid #d1d5db !important;
+                padding: 5px 6px !important;
+                font-size: 12px !important;
+            }
+            #inventoryReportTable thead th {
+                background: #f3f4f6 !important;
+                color: #111827 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            #inventoryReportTable .category-header td {
+                background: #e5e7eb !important;
+                color: #111827 !important;
+                border-color: #9ca3af !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            #inventoryReportTable .inventory-row {
+                background: #ffffff !important;
+            }
+            .stock-badge-print {
+                background: transparent !important;
+                border: none !important;
+                color: #111827 !important;
+                padding: 0 !important;
+            }
+        }
+    </style>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
     
@@ -246,13 +479,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </header>
 
             <div class="flex-1 overflow-y-auto p-4 md:p-8">
-                
-                <?php
-                // Fetch Stats
-                $stat_total = $conn->query("SELECT COUNT(*) as c FROM inventory")->fetch_assoc()['c'];
-                $stat_low = $conn->query("SELECT COUNT(*) as c FROM inventory WHERE current_quantity < 5")->fetch_assoc()['c'];
-                $stat_val = $conn->query("SELECT SUM(current_quantity * price) as v FROM inventory WHERE current_quantity > 0")->fetch_assoc()['v'];
-                ?>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 print:hidden">
                     <div class="bg-white rounded-xl shadow-sm border border-purple-200 p-6 flex items-center justify-between border-l-4 border-l-primary">
@@ -280,6 +506,40 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     </div>
                 </div>
 
+                <form id="inventoryReportForm" method="GET" action="inventory.php" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 print:hidden">
+                    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                        <div class="min-w-[220px] flex items-center">
+                            <h2 class="font-bold text-gray-800 text-base flex items-center"><i class="fas fa-clipboard-list text-primary mr-2"></i>Daily Inventory Report</h2>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row sm:items-end gap-3 w-full lg:w-auto">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Date</label>
+                                <input type="date" name="report_date" value="<?= htmlspecialchars($report_date) ?>" max="<?= htmlspecialchars($today) ?>" class="w-full sm:w-44 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Sort</label>
+                                <select name="sort" onchange="this.form.submit()" class="w-full sm:w-64 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white">
+                                    <?php foreach ($sort_options as $sort_key => $sort_label): ?>
+                                        <option value="<?= htmlspecialchars($sort_key) ?>" <?= $report_sort === $sort_key ? 'selected' : '' ?>><?= htmlspecialchars($sort_label) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <button type="submit" class="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm whitespace-nowrap">
+                                APPLY
+                            </button>
+                            <div class="flex gap-2">
+                                <button type="submit" name="print" value="1" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm border border-gray-300 whitespace-nowrap">
+                                    <i class="fas fa-print mr-1"></i>PRINT
+                                </button>
+                                <button type="submit" name="export" value="excel" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm whitespace-nowrap">
+                                    <i class="fas fa-file-excel mr-1"></i>EXCEL
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4 print:hidden">
                     
                     <div class="flex w-full lg:w-1/3 bg-white border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-all shadow-sm">
@@ -291,54 +551,54 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         <button onclick="openModal()" class="bg-primary hover:bg-primaryDark text-white font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto text-center whitespace-nowrap">
                             <i class="fas fa-plus mr-2"></i>ADD PRODUCT
                         </button>
-                        <button onclick="window.print()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto text-center border border-gray-300 whitespace-nowrap">
-                            <i class="fas fa-print mr-2"></i>PRINT INVENTORY
-                        </button>
                     </div>
                 </div>
 
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="report-print-header">
+                    <div class="report-print-title">Daily Inventory Report</div>
+                    <div class="report-print-date">Date: <?= inventoryReportDateLabel($report_date) ?></div>
+                </div>
+
+                <div id="inventoryReportCard" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left text-gray-600 whitespace-nowrap">
+                        <table id="inventoryReportTable" class="w-full text-sm text-left text-gray-600 whitespace-nowrap">
                             <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
                                 <tr>
                                     <th class="px-6 py-4 font-bold tracking-wider">Product Name</th>
                                     <th class="px-6 py-4 font-bold tracking-wider">Category</th>
                                     <th class="px-6 py-4 font-bold tracking-wider">Price (PHP)</th>
-                                    <th class="px-6 py-4 font-bold tracking-wider">Stock Status</th>
+                                    <th class="px-6 py-4 font-bold tracking-wider">Quantity</th>
+                                    <th class="px-6 py-4 font-bold tracking-wider">Status</th>
                                     <th class="px-6 py-4 font-bold tracking-wider text-right print:hidden">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100" id="inventoryTableBody">
                                 <?php
-                                // We strictly sort by Category First, then Product Name to create the groupings!
-                                $sql = "SELECT * FROM inventory ORDER BY product_type ASC, product_name ASC";
-                                $result = $conn->query($sql);
-
-                                if ($result && $result->num_rows > 0) {
+                                if (!empty($inventory_rows)) {
                                     $current_category = null;
                                     
-                                    while($row = $result->fetch_assoc()) {
+                                    foreach ($inventory_rows as $row) {
                                         
                                         // Dynamic Category Header Row Generation
                                         if ($current_category !== $row['product_type']) {
                                             $current_category = $row['product_type'];
                                             echo "<tr class='category-header bg-purple-100/60'>
-                                                    <td colspan='5' class='px-6 py-2.5 font-black text-primaryDark uppercase text-sm tracking-widest border-y border-purple-200'>
+                                                    <td colspan='6' class='px-6 py-2.5 font-black text-primaryDark uppercase text-sm tracking-widest border-y border-purple-200'>
                                                         <i class='fas fa-tags mr-2 opacity-50'></i>" . htmlspecialchars($current_category) . "
                                                     </td>
                                                   </tr>";
                                         }
 
-                                        $stock = $row['current_quantity'];
+                                        $stock = (int)$row['current_quantity'];
+                                        $quantityText = number_format($stock) . " " . htmlspecialchars($row['quantity_type']) . "(s)";
                                         if ($stock <= 0) {
-                                            $stockBadge = "<span class='inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-red-100 text-red-800 border border-red-200'><i class='fas fa-times-circle mr-1'></i> OUT OF STOCK ({$stock})</span>";
+                                            $stockBadge = "<span class='stock-badge-print inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-red-100 text-red-800 border border-red-200'><i class='fas fa-times-circle mr-1'></i> OUT OF STOCK</span>";
                                             $rowBg = "bg-red-50/30"; 
                                         } elseif ($stock < 5) {
-                                            $stockBadge = "<span class='inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-200'><i class='fas fa-exclamation-triangle mr-1'></i> LOW STOCK ({$stock})</span>";
+                                            $stockBadge = "<span class='stock-badge-print inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-200'><i class='fas fa-exclamation-triangle mr-1'></i> LOW STOCK</span>";
                                             $rowBg = "";
                                         } else {
-                                            $stockBadge = "<span class='font-bold text-gray-800 text-base'>{$stock}</span> <span class='text-gray-400 text-xs ml-1'>" . htmlspecialchars($row['quantity_type']) . "s</span>";
+                                            $stockBadge = "<span class='stock-badge-print inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-green-100 text-green-800 border border-green-200'><i class='fas fa-check-circle mr-1'></i> IN STOCK</span>";
                                             $rowBg = "";
                                         }
 
@@ -346,6 +606,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                                 <td class='px-6 py-4 font-bold text-gray-900 capitalize product-name-cell'>" . htmlspecialchars($row['product_name']) . "</td>
                                                 <td class='px-6 py-4 text-xs font-semibold tracking-wider text-gray-500 uppercase'>" . htmlspecialchars($row['product_type']) . "</td>
                                                 <td class='px-6 py-4 font-semibold text-gray-700'>₱" . number_format($row['price'], 2) . "</td>
+                                                <td class='px-6 py-4 font-bold text-gray-800'>{$quantityText}</td>
                                                 <td class='px-6 py-4'>{$stockBadge}</td>
                                                 <td class='px-6 py-4 text-right print:hidden'>
                                                     
@@ -370,7 +631,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                               </tr>";
                                     }
                                 } else {
-                                    echo "<tr><td colspan='5' class='px-6 py-12 text-center text-gray-500'>Inventory is empty. Click 'Add Product' to begin.</td></tr>";
+                                    echo "<tr><td colspan='6' class='px-6 py-12 text-center text-gray-500'>Inventory is empty. Click 'Add Product' to begin.</td></tr>";
                                 }
                                 ?>
                             </tbody>
@@ -389,6 +650,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             sidebar.classList.toggle('-translate-x-full');
             overlay.classList.toggle('hidden');
         }
+
+        <?php if (isset($_GET['print']) && $_GET['print'] === '1'): ?>
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                window.print();
+                const params = new URLSearchParams(window.location.search);
+                params.delete('print');
+                const query = params.toString();
+                const cleanUrl = window.location.pathname + (query ? '?' + query : '');
+                window.history.replaceState({}, document.title, cleanUrl);
+            }, 350);
+        });
+        <?php endif; ?>
 
         // --- UPGRADED LIVE SEARCH ---
         // Dynamically hides/shows the new Category Headers if they are empty

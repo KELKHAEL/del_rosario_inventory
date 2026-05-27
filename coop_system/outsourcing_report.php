@@ -32,6 +32,99 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reconcile_record_id'])
     header("Location: outsourcing_report.php");
     exit();
 }
+
+function salesReportDateLabel($date) {
+    return date('F d, Y', strtotime($date));
+}
+
+function salesReportQuantityText($row, $plain = false) {
+    $status = $row['status'];
+
+    if ($status === 'PENDING') {
+        return $plain
+            ? $row['quantity_out'] . ' taken'
+            : "<span class='font-bold text-gray-800'>{$row['quantity_out']}</span> taken";
+    }
+
+    if ($status === 'RECONCILED') {
+        $total_taken = (int)$row['quantity_out'] + (int)$row['quantity_returned'];
+        return $plain
+            ? "{$total_taken} Total | {$row['quantity_out']} Sold | {$row['quantity_returned']} Returned"
+            : "<span class='text-gray-500'>{$total_taken} Total</span> | <span class='font-bold text-green-600'>{$row['quantity_out']} Sold</span> | <span class='font-bold text-blue-500'>{$row['quantity_returned']} Returned</span>";
+    }
+
+    return $plain
+        ? $row['quantity_out'] . ' Sold'
+        : "<span class='font-bold text-gray-800'>{$row['quantity_out']}</span> Sold";
+}
+
+$generated_at = date('F d, Y h:i A');
+$report_rows = [];
+$sql = "SELECT io.*, i.product_name 
+        FROM inventory_outsourcing io 
+        LEFT JOIN inventory i ON io.product_id = i.product_id 
+        ORDER BY io.record_date DESC, io.record_id DESC";
+$result = $conn->query($sql);
+if ($result && $result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        $report_rows[] = $row;
+    }
+}
+
+if (isset($_GET['export']) && $_GET['export'] === 'excel') {
+    require_once __DIR__ . '/vendor/autoload.php';
+
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Sales Report');
+
+    $sheet->mergeCells('A1:E1');
+    $sheet->mergeCells('A2:E2');
+    $sheet->setCellValue('A1', 'Sales Report');
+    $sheet->setCellValue('A2', 'Date Generated: ' . $generated_at);
+    $sheet->getStyle('A:E')->getFont()->setName('Arial')->setSize(12);
+    $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
+    $sheet->getStyle('A1:A2')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+
+    $row_num = 4;
+    $current_date = null;
+    foreach ($report_rows as $row) {
+        if ($current_date !== $row['record_date']) {
+            $current_date = $row['record_date'];
+            $sheet->mergeCells("A{$row_num}:E{$row_num}");
+            $sheet->setCellValue("A{$row_num}", salesReportDateLabel($current_date));
+            $sheet->getStyle("A{$row_num}:E{$row_num}")->getFont()->setBold(true);
+            $sheet->getStyle("A{$row_num}:E{$row_num}")->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setARGB('FFEFE7F7');
+            $row_num++;
+
+            $sheet->fromArray(['Event / Buyer Name', 'Product', 'Quantity Details', 'Status', 'Receipt No.'], null, "A{$row_num}");
+            $sheet->getStyle("A{$row_num}:E{$row_num}")->getFont()->setBold(true);
+            $row_num++;
+        }
+
+        $sheet->setCellValue("A{$row_num}", $row['buyer_name']);
+        $sheet->setCellValue("B{$row_num}", $row['product_name']);
+        $sheet->setCellValue("C{$row_num}", salesReportQuantityText($row, true));
+        $sheet->setCellValue("D{$row_num}", $row['status']);
+        $sheet->setCellValue("E{$row_num}", $row['receipt_no']);
+        $row_num++;
+    }
+
+    foreach (range('A', 'E') as $column) {
+        $sheet->getColumnDimension($column)->setAutoSize(true);
+    }
+
+    $filename = 'Sales_Report_' . date('Y-m-d') . '.xlsx';
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+
+    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit();
+}
 ?>
 
 <!DOCTYPE html>
@@ -55,6 +148,94 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reconcile_record_id'])
             }
         }
     </script>
+    <style>
+        .sales-print-header { display: none; }
+        @media print {
+            @page {
+                margin: 14mm;
+            }
+            html,
+            body {
+                background: #ffffff !important;
+                overflow: visible !important;
+                height: auto !important;
+                font-family: Arial, sans-serif !important;
+                font-size: 12px !important;
+            }
+            .print\:hidden {
+                display: none !important;
+            }
+            .h-screen,
+            .overflow-hidden,
+            .overflow-y-auto,
+            .overflow-x-auto {
+                height: auto !important;
+                max-height: none !important;
+                overflow: visible !important;
+            }
+            main,
+            main > div {
+                display: block !important;
+                height: auto !important;
+                overflow: visible !important;
+                width: 100% !important;
+                padding: 0 !important;
+            }
+            .sales-print-header {
+                display: block !important;
+                text-align: center;
+                margin-bottom: 16px;
+                color: #111827;
+            }
+            .sales-print-title {
+                font-size: 20px !important;
+                font-weight: 700;
+                margin-bottom: 8px;
+            }
+            .sales-print-date {
+                font-size: 14px !important;
+                margin-bottom: 14px;
+            }
+            #salesReportCard {
+                border: none !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                overflow: visible !important;
+            }
+            #salesReportTable {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                white-space: normal !important;
+                font-family: Arial, sans-serif !important;
+                font-size: 12px !important;
+            }
+            #salesReportTable th,
+            #salesReportTable td {
+                border: 1px solid #d1d5db !important;
+                padding: 5px 6px !important;
+                font-size: 12px !important;
+            }
+            #salesReportTable thead th {
+                background: #f3f4f6 !important;
+                color: #111827 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            #salesReportTable .date-header td {
+                background: #e5e7eb !important;
+                color: #111827 !important;
+                border-color: #9ca3af !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .status-badge-print {
+                background: transparent !important;
+                border: none !important;
+                color: #111827 !important;
+                padding: 0 !important;
+            }
+        }
+    </style>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased overflow-hidden">
 
@@ -157,7 +338,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reconcile_record_id'])
                     <button class="text-gray-500 focus:outline-none md:hidden hover:text-primary" onclick="toggleSidebar()">
                         <i class="fas fa-bars text-2xl"></i>
                     </button>
-                    <h1 class="text-xl md:text-2xl font-bold text-gray-800 tracking-tight">Outsourcing & Events</h1>
+                    <h1 class="text-xl md:text-2xl font-bold text-gray-800 tracking-tight"> Outsourcing and Sales Logs</h1>
                 </div>
             </header>
 
@@ -216,12 +397,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reconcile_record_id'])
                         <button onclick="window.print()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm border border-gray-300 w-full sm:w-auto whitespace-nowrap">
                             <i class="fas fa-print mr-2"></i>PRINT REPORT
                         </button>
+                        <a href="outsourcing_report.php?export=excel" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto whitespace-nowrap text-center">
+                            <i class="fas fa-file-excel mr-2"></i>EXCEL
+                        </a>
                     </div>
                 </div>
 
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="sales-print-header">
+                    <div class="sales-print-title">Sales Report</div>
+                    <div class="sales-print-date">Date Generated: <?= htmlspecialchars($generated_at) ?></div>
+                </div>
+
+                <div id="salesReportCard" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left text-gray-600 whitespace-nowrap">
+                        <table id="salesReportTable" class="w-full text-sm text-left text-gray-600 whitespace-nowrap">
                             <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
                                 <tr>
                                     <th class="px-6 py-4 font-bold tracking-wider">Date</th>
@@ -233,37 +422,38 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reconcile_record_id'])
                             </thead>
                             <tbody class="divide-y divide-gray-100" id="logTableBody">
                                 <?php
-                                // Order by PENDING first so they are immediately visible at the top
-                                $sql = "SELECT io.*, i.product_name 
-                                        FROM inventory_outsourcing io 
-                                        LEFT JOIN inventory i ON io.product_id = i.product_id 
-                                        ORDER BY CASE WHEN io.status = 'PENDING' THEN 1 ELSE 2 END, io.record_date DESC, io.record_id DESC";
-                                $result = $conn->query($sql);
-
-                                if ($result && $result->num_rows > 0) {
-                                    while($row = $result->fetch_assoc()) {
-                                        
+                                if (!empty($report_rows)) {
+                                    $current_date = null;
+                                    foreach ($report_rows as $row) {
+                                         
                                         $raw_date = $row['record_date'];
                                         $date = date('M d, Y', strtotime($raw_date));
                                         $name = htmlspecialchars($row['buyer_name']);
                                         $product = htmlspecialchars($row['product_name']);
                                         $status = $row['status'];
-                                        
+
+                                        if ($current_date !== $raw_date) {
+                                            $current_date = $raw_date;
+                                            echo "<tr class='date-header bg-purple-100/60' data-date='{$raw_date}'>
+                                                    <td colspan='5' class='px-6 py-2.5 font-black text-primaryDark uppercase text-sm tracking-widest border-y border-purple-200'>
+                                                        <i class='fas fa-calendar-day mr-2 opacity-50'></i>" . salesReportDateLabel($raw_date) . "
+                                                    </td>
+                                                  </tr>";
+                                        }
+                                         
                                         if ($status === 'PENDING') {
-                                            $badge = "<span class='bg-orange-100 text-orange-800 px-2.5 py-1 rounded text-[10px] font-bold uppercase border border-orange-200'>PENDING RETURN</span>";
-                                            $qty_text = "<span class='font-bold text-gray-800'>{$row['quantity_out']}</span> taken";
+                                            $badge = "<span class='status-badge-print bg-orange-100 text-orange-800 px-2.5 py-1 rounded text-[10px] font-bold uppercase border border-orange-200'>PENDING RETURN</span>";
+                                            $qty_text = salesReportQuantityText($row);
                                             $action_btn = "<button onclick='openReconcileModal({$row['record_id']}, {$row['product_id']}, \"" . addslashes($product) . "\", {$row['quantity_out']})' class='bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-600 hover:text-white py-1 px-3 rounded text-xs font-bold transition-colors shadow-sm'><i class='fas fa-clipboard-check mr-1'></i> RECONCILE</button>";
                                             $row_bg = "bg-orange-50/20";
                                         } else if ($status === 'RECONCILED') {
-                                            $badge = "<span class='bg-blue-100 text-blue-800 px-2.5 py-1 rounded text-[10px] font-bold uppercase border border-blue-200'>RECONCILED</span>";
-                                            // Showing clearly what was sold vs what was returned
-                                            $total_taken = $row['quantity_out'] + $row['quantity_returned'];
-                                            $qty_text = "<span class='text-gray-500'>{$total_taken} Total</span> | <span class='font-bold text-green-600'>{$row['quantity_out']} Sold</span> | <span class='font-bold text-blue-500'>{$row['quantity_returned']} Returned</span>";
+                                            $badge = "<span class='status-badge-print bg-blue-100 text-blue-800 px-2.5 py-1 rounded text-[10px] font-bold uppercase border border-blue-200'>RECONCILED</span>";
+                                            $qty_text = salesReportQuantityText($row);
                                             $action_btn = "<span class='text-gray-300 text-xs'><i class='fas fa-check'></i></span>";
                                             $row_bg = "";
                                         } else {
-                                            $badge = "<span class='bg-green-100 text-green-800 px-2.5 py-1 rounded text-[10px] font-bold uppercase border border-green-200'>COMPLETED</span>";
-                                            $qty_text = "<span class='font-bold text-gray-800'>{$row['quantity_out']}</span> Sold";
+                                            $badge = "<span class='status-badge-print bg-green-100 text-green-800 px-2.5 py-1 rounded text-[10px] font-bold uppercase border border-green-200'>COMPLETED</span>";
+                                            $qty_text = salesReportQuantityText($row);
                                             $action_btn = "<span class='text-gray-300 text-xs'><i class='fas fa-check'></i></span>";
                                             $row_bg = "";
                                         }
@@ -305,9 +495,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reconcile_record_id'])
             let searchText = document.getElementById('logSearch').value.toLowerCase();
             let startDate = document.getElementById('dateFilterStart').value;
             let endDate = document.getElementById('dateFilterEnd').value;
-            let rows = document.querySelectorAll('.log-row');
+            let rows = document.querySelectorAll('#logTableBody tr');
+            let currentHeader = null;
+            let visibleItemsUnderHeader = 0;
 
             rows.forEach(row => {
+                if (row.classList.contains('date-header')) {
+                    if (currentHeader !== null) {
+                        currentHeader.style.display = visibleItemsUnderHeader > 0 ? '' : 'none';
+                    }
+                    currentHeader = row;
+                    visibleItemsUnderHeader = 0;
+                    row.style.display = '';
+                    return;
+                }
+
+                if (!row.classList.contains('log-row')) {
+                    return;
+                }
+
                 let textMatch = row.textContent.toLowerCase().includes(searchText);
                 let dateMatch = true;
 
@@ -332,8 +538,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reconcile_record_id'])
                     }
                 }
 
-                row.style.display = (textMatch && dateMatch) ? '' : 'none';
+                if (textMatch && dateMatch) {
+                    row.style.display = '';
+                    visibleItemsUnderHeader++;
+                } else {
+                    row.style.display = 'none';
+                }
             });
+
+            if (currentHeader !== null) {
+                currentHeader.style.display = visibleItemsUnderHeader > 0 ? '' : 'none';
+            }
         }
 
         document.getElementById('logSearch').addEventListener('keyup', filterTable);
