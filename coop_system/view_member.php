@@ -388,6 +388,8 @@ $dob = !empty($member['date_of_birth']) ? date('F d, Y', strtotime($member['date
                                         $status = !empty($trans['payment_status']) ? htmlspecialchars($trans['payment_status']) : 'COMPLETED';
                                         if (stripos($status, 'paid') !== false || stripos($status, 'completed') !== false) {
                                             $stat_badge = "<span class='bg-green-100 text-green-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase border border-green-200'>$status</span>";
+                                        } elseif (stripos($status, 'downpayment') !== false) {
+                                            $stat_badge = "<span class='bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase border border-yellow-200'>$status</span>";
                                         } else {
                                             $stat_badge = "<span class='bg-red-100 text-red-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase border border-red-200'>$status</span>";
                                         }

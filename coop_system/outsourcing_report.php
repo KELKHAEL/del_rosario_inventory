@@ -27,11 +27,53 @@ function normalizeReferenceNumber($value) {
     return $value;
 }
 
+function normalizePaymentAmount($value) {
+    $amount = (float)trim((string)$value);
+    if (!is_finite($amount) || $amount < 0) {
+        return 0.0;
+    }
+    return $amount;
+}
+
 if (isset($_GET['cancel_ref']) && $_GET['cancel_ref'] === '1') {
     unset($_SESSION['show_ref_modal'], $_SESSION['ref_transaction_id'], $_SESSION['ref_event_name'], $_SESSION['ref_event_date']);
     $_SESSION['alert_title'] = "Not Finalized";
     $_SESSION['alert_message'] = "The outsourced transaction remains <strong>PENDING</strong> until you provide a reference/invoice number.";
     $_SESSION['alert_type'] = "info";
+    header("Location: outsourcing_report.php");
+    exit();
+}
+
+if (isset($_GET['cancel_paylater']) && $_GET['cancel_paylater'] === '1') {
+    unset($_SESSION['show_paylater_modal'], $_SESSION['paylater_transaction_id'], $_SESSION['paylater_member_name'], $_SESSION['paylater_date']);
+    $_SESSION['alert_title'] = "Not Paid";
+    $_SESSION['alert_message'] = "This Pay Later transaction remains <strong>PENDING</strong> until payment is received.";
+    $_SESSION['alert_type'] = "info";
+    header("Location: outsourcing_report.php");
+    exit();
+}
+
+if (isset($_GET['paylater_txn'])) {
+    $transaction_id = (int)$_GET['paylater_txn'];
+    if ($transaction_id > 0) {
+        $stmt = $conn->prepare("SELECT transaction_id, transaction_date, member_name, payment_status, remaining_balance FROM transactions WHERE transaction_id = ? AND transaction_type = 'PURCHASE' LIMIT 1");
+        $stmt->bind_param("i", $transaction_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $t = $res ? $res->fetch_assoc() : null;
+        $stmt->close();
+
+        if ($t && (float)($t['remaining_balance'] ?? 0) > 0) {
+            $_SESSION['show_paylater_modal'] = 1;
+            $_SESSION['paylater_transaction_id'] = (int)$t['transaction_id'];
+            $_SESSION['paylater_member_name'] = $t['member_name'];
+            $_SESSION['paylater_date'] = $t['transaction_date'];
+        } else {
+            $_SESSION['alert_title'] = "Not Payable";
+            $_SESSION['alert_message'] = "This transaction is already paid or cannot be found.";
+            $_SESSION['alert_type'] = "info";
+        }
+    }
     header("Location: outsourcing_report.php");
     exit();
 }
@@ -175,6 +217,106 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reconcile_record_id'])
     }
 }
 
+// --- RECEIVE PAYMENT FOR PAY LATER TRANSACTION ---
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['receive_pay_later_payment'])) {
+    $transaction_id = (int)($_POST['transaction_id'] ?? 0);
+    $payment_amount = normalizePaymentAmount($_POST['payment_amount'] ?? 0);
+    $reference_no = normalizeReferenceNumber($_POST['reference_no'] ?? '');
+
+    $expected_id = (int)($_SESSION['paylater_transaction_id'] ?? 0);
+    if ($transaction_id <= 0 || $expected_id <= 0 || $transaction_id !== $expected_id) {
+        $_SESSION['alert_title'] = "Invalid Request";
+        $_SESSION['alert_message'] = "Unable to receive payment for this transaction. Please try again from the payment button.";
+        $_SESSION['alert_type'] = "error";
+        header("Location: outsourcing_report.php");
+        exit();
+    }
+
+    if ($payment_amount <= 0) {
+        $_SESSION['alert_title'] = "Invalid Amount";
+        $_SESSION['alert_message'] = "Please enter a valid payment amount.";
+        $_SESSION['alert_type'] = "error";
+        $_SESSION['show_paylater_modal'] = 1;
+        header("Location: outsourcing_report.php");
+        exit();
+    }
+
+    $conn->begin_transaction();
+    try {
+        $stmt = $conn->prepare("SELECT amount, downpayment, remaining_balance, payment_status FROM transactions WHERE transaction_id = ? LIMIT 1");
+        $stmt->bind_param("i", $transaction_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $row = $res ? $res->fetch_assoc() : null;
+        $stmt->close();
+
+        if (!$row) {
+            throw new Exception("Transaction not found");
+        }
+
+        $current_status = strtoupper((string)($row['payment_status'] ?? ''));
+        $remaining = (float)($row['remaining_balance'] ?? 0);
+        $downpayment = (float)($row['downpayment'] ?? 0);
+        $amount = (float)($row['amount'] ?? 0);
+
+        if ($remaining <= 0 || $current_status === 'COMPLETED' || $current_status === 'PAID') {
+            $_SESSION['alert_title'] = "Already Paid";
+            $_SESSION['alert_message'] = "This transaction is already fully paid.";
+            $_SESSION['alert_type'] = "info";
+            unset($_SESSION['show_paylater_modal'], $_SESSION['paylater_transaction_id'], $_SESSION['paylater_member_name'], $_SESSION['paylater_date']);
+            $conn->commit();
+            header("Location: outsourcing_report.php");
+            exit();
+        }
+
+        $apply = min($payment_amount, $remaining);
+        $new_downpayment = $downpayment + $apply;
+        $new_remaining = max(0, $remaining - $apply);
+
+        if ($new_remaining > 0) {
+            $stmt_upd = $conn->prepare("UPDATE transactions SET downpayment = ?, remaining_balance = ?, payment_status = 'DOWNPAYMENT' WHERE transaction_id = ? AND remaining_balance > 0");
+            $stmt_upd->bind_param("ddi", $new_downpayment, $new_remaining, $transaction_id);
+            $stmt_upd->execute();
+            $stmt_upd->close();
+
+            $_SESSION['alert_title'] = "Downpayment Recorded";
+            $_SESSION['alert_message'] = "This transaction will be marked as a downpayment. The invoice number or reference number will be added once the remaining balance has been fully paid.";
+            $_SESSION['alert_type'] = "info";
+        } else {
+            if ($reference_no === '') {
+                $_SESSION['alert_title'] = "Missing Reference";
+                $_SESSION['alert_message'] = "Please enter a Reference Number or Invoice Number to complete this transaction.";
+                $_SESSION['alert_type'] = "error";
+                $_SESSION['show_paylater_modal'] = 1;
+                $conn->commit();
+                header("Location: outsourcing_report.php");
+                exit();
+            }
+
+            $stmt_upd = $conn->prepare("UPDATE transactions SET invoice_no = ?, downpayment = ?, remaining_balance = 0, payment_status = 'COMPLETED' WHERE transaction_id = ? AND remaining_balance > 0");
+            $stmt_upd->bind_param("sdi", $reference_no, $new_downpayment, $transaction_id);
+            $stmt_upd->execute();
+            $stmt_upd->close();
+
+            $_SESSION['alert_title'] = "Payment Completed";
+            $_SESSION['alert_message'] = "Transaction marked as <strong>COMPLETED</strong> and reference/invoice saved.";
+            $_SESSION['alert_type'] = "success";
+        }
+
+        $conn->commit();
+        unset($_SESSION['show_paylater_modal'], $_SESSION['paylater_transaction_id'], $_SESSION['paylater_member_name'], $_SESSION['paylater_date']);
+        header("Location: outsourcing_report.php");
+        exit();
+    } catch (Exception $e) {
+        $conn->rollback();
+        $_SESSION['alert_title'] = "Payment Failed";
+        $_SESSION['alert_message'] = "An error occurred while receiving payment. Please try again.";
+        $_SESSION['alert_type'] = "error";
+        header("Location: outsourcing_report.php");
+        exit();
+    }
+}
+
 function salesReportQuantityText($row, $plain = false) {
     $status = $row['status'];
 
@@ -206,6 +348,38 @@ $result = $conn->query($sql);
 if ($result && $result->num_rows > 0) {
     while ($row = $result->fetch_assoc()) {
         $report_rows[] = $row;
+    }
+}
+
+$paylater_groups = [];
+$paylater_transaction_map = [];
+foreach ($report_rows as $row) {
+    if (($row['payment_method'] ?? '') !== 'Pay Later') {
+        continue;
+    }
+    $group_key = ($row['record_date'] ?? '') . '||' . ($row['buyer_name'] ?? '');
+    if (!isset($paylater_groups[$group_key])) {
+        $paylater_groups[$group_key] = [
+            'record_date' => $row['record_date'],
+            'buyer_name' => $row['buyer_name'],
+            'items' => [],
+        ];
+    }
+    $paylater_groups[$group_key]['items'][] = $row;
+}
+
+if (!empty($paylater_groups)) {
+    foreach ($paylater_groups as $group_key => $g) {
+        $date_key = $g['record_date'];
+        $name_key = $g['buyer_name'];
+        $stmt_t = $conn->prepare("SELECT transaction_id, amount, downpayment, remaining_balance, payment_status, invoice_no FROM transactions WHERE transaction_type = 'PURCHASE' AND transaction_date = ? AND member_name = ? ORDER BY transaction_id DESC LIMIT 1");
+        $stmt_t->bind_param("ss", $date_key, $name_key);
+        $stmt_t->execute();
+        $res_t = $stmt_t->get_result();
+        if ($res_t && ($trow = $res_t->fetch_assoc())) {
+            $paylater_transaction_map[$group_key] = $trow;
+        }
+        $stmt_t->close();
     }
 }
 
@@ -462,6 +636,43 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         </div>
     </div>
 
+    <div id="payLaterPaymentModal" class="fixed inset-0 z-[999] hidden items-center justify-center p-4 print:hidden">
+        <div class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm" onclick="cancelPayLaterModal()"></div>
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md z-10 overflow-hidden transform transition-all">
+            <div class="bg-purple-50 px-6 py-4 border-b border-purple-100 flex justify-between items-center">
+                <h3 class="font-bold text-primaryDark"><i class="fas fa-money-bill-wave mr-2"></i>Receive Payment (Pay Later)</h3>
+                <button type="button" onclick="cancelPayLaterModal()" class="text-purple-400 hover:text-purple-600"><i class="fas fa-times"></i></button>
+            </div>
+
+            <form action="outsourcing_report.php" method="POST" class="p-6">
+                <input type="hidden" name="receive_pay_later_payment" value="1">
+                <input type="hidden" name="transaction_id" value="<?= (int)($_SESSION['paylater_transaction_id'] ?? 0) ?>">
+
+                <div class="mb-5 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Member</div>
+                    <div class="font-bold text-gray-800 text-lg capitalize"><?= htmlspecialchars($_SESSION['paylater_member_name'] ?? 'N/A') ?></div>
+                    <div class="mt-1 text-xs text-gray-500">Date: <?= htmlspecialchars($_SESSION['paylater_date'] ?? '') ?></div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Payment Amount</label>
+                        <input type="number" step="0.01" min="0" name="payment_amount" required class="w-full rounded-md border border-gray-300 px-4 py-3 text-base font-bold focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Invoice / Ref No.</label>
+                        <input type="text" name="reference_no" maxlength="100" placeholder="Required if fully paid" class="w-full rounded-md border border-gray-300 px-4 py-3 text-base font-semibold focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900">
+                    </div>
+                </div>
+
+                <div class="flex gap-3 justify-end">
+                    <button type="button" onclick="cancelPayLaterModal()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm transition-colors">CANCEL</button>
+                    <button type="submit" class="bg-primary hover:bg-primaryDark text-white font-bold py-2 px-6 rounded-md text-sm transition-colors shadow-md"><i class="fas fa-check mr-1"></i> APPLY PAYMENT</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="flex h-screen w-full">
 
         <div id="mobile-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-40 hidden md:hidden transition-opacity print:hidden" onclick="toggleSidebar()"></div>
@@ -594,6 +805,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
                                 <?php
                                 if (!empty($report_rows)) {
                                     $current_date = null;
+                                    $printed_paylater = [];
                                     foreach ($report_rows as $row) {
                                          
                                         $raw_date = $row['record_date'];
@@ -601,6 +813,75 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
                                         $name = htmlspecialchars($row['buyer_name']);
                                         $product = htmlspecialchars($row['product_name']);
                                         $status = $row['status'];
+                                        $method = $row['payment_method'] ?? '';
+
+                                        if ($method === 'Pay Later') {
+                                            $group_key = $raw_date . '||' . ($row['buyer_name'] ?? '');
+                                            if (isset($printed_paylater[$group_key])) {
+                                                continue;
+                                            }
+                                            $printed_paylater[$group_key] = true;
+
+                                            $trow = $paylater_transaction_map[$group_key] ?? null;
+                                            $t_status = strtoupper((string)($trow['payment_status'] ?? 'PENDING'));
+                                            $t_amount = (float)($trow['amount'] ?? 0);
+                                            $t_down = (float)($trow['downpayment'] ?? 0);
+                                            $t_bal = (float)($trow['remaining_balance'] ?? $t_amount);
+                                            $t_ref = $trow['invoice_no'] ?? '';
+                                            $t_id = (int)($trow['transaction_id'] ?? 0);
+
+                                            if ($t_bal > 0 && $t_down > 0) {
+                                                $t_status = 'DOWNPAYMENT';
+                                            } elseif ($t_bal <= 0 && ($t_status === '' || $t_status === 'PENDING' || $t_status === 'DOWNPAYMENT')) {
+                                                $t_status = 'COMPLETED';
+                                            } elseif ($t_status === '') {
+                                                $t_status = 'PENDING';
+                                            }
+
+                                            if ($t_status === 'COMPLETED' || $t_status === 'PAID') {
+                                                $badge = "<span class='status-badge-print bg-green-100 text-green-800 px-2.5 py-1 rounded text-[10px] font-bold uppercase border border-green-200'>PAID</span>";
+                                                $action_btn = "<span class='text-gray-300 text-xs'><i class='fas fa-check'></i></span>";
+                                            } elseif ($t_status === 'DOWNPAYMENT') {
+                                                $badge = "<span class='status-badge-print bg-yellow-100 text-yellow-800 px-2.5 py-1 rounded text-[10px] font-bold uppercase border border-yellow-200'>DOWNPAYMENT</span>";
+                                                $action_btn = ($t_id > 0)
+                                                    ? "<a href='outsourcing_report.php?paylater_txn={$t_id}' class='bg-primary text-white hover:bg-primaryDark py-1 px-3 rounded text-xs font-bold transition-colors shadow-sm inline-block'><i class='fas fa-hand-holding-usd mr-1'></i> PAY</a>"
+                                                    : "<span class='text-gray-300 text-xs'><i class='fas fa-ban'></i></span>";
+                                            } else {
+                                                $badge = "<span class='status-badge-print bg-red-100 text-red-800 px-2.5 py-1 rounded text-[10px] font-bold uppercase border border-red-200'>PENDING</span>";
+                                                $action_btn = ($t_id > 0)
+                                                    ? "<a href='outsourcing_report.php?paylater_txn={$t_id}' class='bg-primary text-white hover:bg-primaryDark py-1 px-3 rounded text-xs font-bold transition-colors shadow-sm inline-block'><i class='fas fa-hand-holding-usd mr-1'></i> PAY</a>"
+                                                    : "<span class='text-gray-300 text-xs'><i class='fas fa-ban'></i></span>";
+                                            }
+
+                                            $items = $paylater_groups[$group_key]['items'] ?? [];
+                                            $items_lines = [];
+                                            foreach ($items as $it) {
+                                                $pn = htmlspecialchars($it['product_name']);
+                                                $qt = (int)$it['quantity_out'];
+                                                $items_lines[] = "{$qt}x {$pn}";
+                                            }
+                                            $items_summary = !empty($items_lines) ? implode("<br>", $items_lines) : "Pay Later Purchase";
+
+                                            $pay_summary = "<span class='text-gray-500'>Total: </span><span class='font-bold text-gray-900'>PHP " . number_format($t_amount, 2) . "</span>"
+                                                . "<span class='text-gray-300 mx-1'>|</span><span class='text-gray-500'>Downpayment: </span><span class='font-bold text-gray-900'>PHP " . number_format($t_down, 2) . "</span>"
+                                                . "<span class='text-gray-300 mx-1'>|</span><span class='text-gray-500'>Balance: </span><span class='font-bold text-red-600'>PHP " . number_format($t_bal, 2) . "</span>";
+
+                                            $ref_line = ($t_ref && $t_ref !== 'N/A' && $t_ref !== 'OUTSOURCED') ? "<div class='text-[10px] font-mono text-gray-500 mt-1'>REF: " . htmlspecialchars($t_ref) . "</div>" : "";
+
+                                            echo "<tr class='log-row hover:bg-purple-50 transition-colors' data-date='{$raw_date}'>
+                                                    <td class='px-6 py-4 font-medium text-gray-500'>{$date}</td>
+                                                    <td class='px-6 py-4 font-bold text-gray-900 capitalize'>{$name}</td>
+                                                    <td class='px-6 py-4 text-gray-700'>
+                                                        <div class='font-bold text-primary'>PAY LATER</div>
+                                                        <div class='text-xs mt-0.5'>{$items_summary}</div>
+                                                        <div class='text-xs mt-2'>{$pay_summary}</div>
+                                                        {$ref_line}
+                                                    </td>
+                                                    <td class='px-6 py-4 text-center'>{$badge}</td>
+                                                    <td class='px-6 py-4 text-right print:hidden'>{$action_btn}</td>
+                                                  </tr>";
+                                            continue;
+                                        }
 
                                         if ($current_date !== $raw_date) {
                                             $current_date = $raw_date;
@@ -610,7 +891,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
                                                     </td>
                                                   </tr>";
                                         }
-                                         
+                                        
+                                        if ($method === 'Pay Later') {
+                                            // Pay Later rows are rendered once per group above.
+                                            continue;
+                                        }
+ 
                                         if ($status === 'PENDING') {
                                             $badge = "<span class='status-badge-print bg-orange-100 text-orange-800 px-2.5 py-1 rounded text-[10px] font-bold uppercase border border-orange-200'>PENDING RETURN</span>";
                                             $qty_text = salesReportQuantityText($row);
@@ -669,9 +955,22 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             if (input) input.focus();
         }
 
-        function cancelReferenceModal() {
-            window.location.href = 'outsourcing_report.php?cancel_ref=1';
-        }
+function cancelReferenceModal() {
+    window.location.href = 'outsourcing_report.php?cancel_ref=1';
+}
+
+function openPayLaterModal() {
+    const modal = document.getElementById('payLaterPaymentModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    const input = modal.querySelector('input[name="payment_amount"]');
+    if (input) input.focus();
+}
+
+function cancelPayLaterModal() {
+    window.location.href = 'outsourcing_report.php?cancel_paylater=1';
+}
 
         // --- UNIFIED SEARCH & DATE FILTER LOGIC ---
         function filterTable() {
@@ -848,6 +1147,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         <?php if (!empty($_SESSION['show_ref_modal']) && !empty($_SESSION['ref_transaction_id'])): ?>
             document.addEventListener('DOMContentLoaded', () => {
                 openReferenceModal();
+            });
+        <?php endif; ?>
+
+        <?php if (!empty($_SESSION['show_paylater_modal']) && !empty($_SESSION['paylater_transaction_id'])): ?>
+            document.addEventListener('DOMContentLoaded', () => {
+                openPayLaterModal();
             });
         <?php endif; ?>
     </script>
