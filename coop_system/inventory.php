@@ -515,7 +515,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
                         <div class="flex flex-col sm:flex-row sm:items-end gap-3 w-full lg:w-auto">
                             <div>
                                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Date</label>
-                                <input type="date" name="report_date" value="<?= htmlspecialchars($report_date) ?>" max="<?= htmlspecialchars($today) ?>" class="w-full sm:w-44 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white">
+                                <input type="date" name="report_date" value="<?= htmlspecialchars($report_date) ?>" max="<?= htmlspecialchars($today) ?>" class="w-full sm:w-34 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white">
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Sort</label>

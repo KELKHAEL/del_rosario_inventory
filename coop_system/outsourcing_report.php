@@ -11,6 +11,77 @@ if ($check_col->num_rows == 0) {
 // Automatically catch any new "Others" (Bazaars) dispatched from POS and flag them as PENDING
 $conn->query("UPDATE inventory_outsourcing SET status = 'PENDING' WHERE payment_method = 'Others' AND status = 'COMPLETED' AND quantity_returned = 0");
 
+function salesReportDateLabel($date) {
+    return date('F d, Y', strtotime($date));
+}
+
+function normalizeReferenceNumber($value) {
+    $value = trim((string)$value);
+    if ($value === '') {
+        return '';
+    }
+    // invoice_no is varchar(100) in the DB.
+    if (strlen($value) > 100) {
+        $value = substr($value, 0, 100);
+    }
+    return $value;
+}
+
+if (isset($_GET['cancel_ref']) && $_GET['cancel_ref'] === '1') {
+    unset($_SESSION['show_ref_modal'], $_SESSION['ref_transaction_id'], $_SESSION['ref_event_name'], $_SESSION['ref_event_date']);
+    $_SESSION['alert_title'] = "Not Finalized";
+    $_SESSION['alert_message'] = "The outsourced transaction remains <strong>PENDING</strong> until you provide a reference/invoice number.";
+    $_SESSION['alert_type'] = "info";
+    header("Location: outsourcing_report.php");
+    exit();
+}
+
+// --- FINALIZE OUTSOURCED TRANSACTION PAYMENT (REF/INVOICE) ---
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['finalize_outsource_payment'])) {
+    $transaction_id = (int)($_POST['transaction_id'] ?? 0);
+    $reference_no = normalizeReferenceNumber($_POST['reference_no'] ?? '');
+
+    $expected_id = (int)($_SESSION['ref_transaction_id'] ?? 0);
+    if ($transaction_id <= 0 || $expected_id <= 0 || $transaction_id !== $expected_id) {
+        $_SESSION['alert_title'] = "Invalid Request";
+        $_SESSION['alert_message'] = "Unable to finalize this outsourced transaction. Please reconcile again and try once more.";
+        $_SESSION['alert_type'] = "error";
+        header("Location: outsourcing_report.php");
+        exit();
+    }
+
+    if ($reference_no === '') {
+        $_SESSION['alert_title'] = "Missing Reference";
+        $_SESSION['alert_message'] = "Please enter a Reference Number or Invoice Number to finalize the outsourced transaction.";
+        $_SESSION['alert_type'] = "error";
+        $_SESSION['show_ref_modal'] = 1;
+        header("Location: outsourcing_report.php");
+        exit();
+    }
+
+    $stmt = $conn->prepare("UPDATE transactions SET invoice_no = ?, payment_status = 'COMPLETED', downpayment = amount, remaining_balance = 0 WHERE transaction_id = ? AND payment_status = 'PENDING' AND invoice_no = 'OUTSOURCED'");
+    $stmt->bind_param("si", $reference_no, $transaction_id);
+    $stmt->execute();
+    $affected = $stmt->affected_rows;
+    $stmt->close();
+
+    if ($affected <= 0) {
+        $_SESSION['alert_title'] = "Already Finalized";
+        $_SESSION['alert_message'] = "This outsourced transaction was already finalized (or cannot be matched).";
+        $_SESSION['alert_type'] = "info";
+        unset($_SESSION['show_ref_modal'], $_SESSION['ref_transaction_id'], $_SESSION['ref_event_name'], $_SESSION['ref_event_date']);
+        header("Location: outsourcing_report.php");
+        exit();
+    }
+
+    $_SESSION['alert_title'] = "Transaction Completed";
+    $_SESSION['alert_message'] = "The outsourced transaction has been marked as <strong>COMPLETED</strong> and the reference/invoice number was saved.";
+    $_SESSION['alert_type'] = "success";
+    unset($_SESSION['show_ref_modal'], $_SESSION['ref_transaction_id'], $_SESSION['ref_event_name'], $_SESSION['ref_event_date']);
+    header("Location: outsourcing_report.php");
+    exit();
+}
+
 // --- PROCESS RECONCILIATION ---
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reconcile_record_id'])) {
     $rec_id = (int)$_POST['reconcile_record_id'];
@@ -18,23 +89,90 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reconcile_record_id'])
     $qty_sold = (int)$_POST['qty_sold'];
     $qty_returned = (int)$_POST['qty_returned'];
 
-    // 1. Return unsold stock to the master inventory naturally!
-    if ($qty_returned > 0) {
-        $conn->query("UPDATE inventory SET current_quantity = current_quantity + $qty_returned WHERE product_id = $prod_id");
+    $log_row = null;
+    $log_res = $conn->query("SELECT record_date, buyer_name, payment_method, status FROM inventory_outsourcing WHERE record_id = $rec_id LIMIT 1");
+    if ($log_res && $log_res->num_rows > 0) {
+        $log_row = $log_res->fetch_assoc();
     }
 
-    // 2. Update the log to RECONCILED with the true sold/returned numbers
-    $conn->query("UPDATE inventory_outsourcing SET status = 'RECONCILED', quantity_out = $qty_sold, quantity_returned = $qty_returned WHERE record_id = $rec_id");
+    if (!$log_row) {
+        $_SESSION['alert_title'] = "Not Found";
+        $_SESSION['alert_message'] = "Unable to locate the outsourcing record for reconciliation.";
+        $_SESSION['alert_type'] = "error";
+        header("Location: outsourcing_report.php");
+        exit();
+    }
 
-    $_SESSION['alert_title'] = "Event Reconciled";
-    $_SESSION['alert_message'] = "Stock has been successfully reconciled! <strong>{$qty_returned} items</strong> were returned to the master inventory.";
-    $_SESSION['alert_type'] = "success";
-    header("Location: outsourcing_report.php");
-    exit();
-}
+    if ($log_row['status'] === 'RECONCILED') {
+        $_SESSION['alert_title'] = "Already Reconciled";
+        $_SESSION['alert_message'] = "This record is already reconciled.";
+        $_SESSION['alert_type'] = "info";
+        header("Location: outsourcing_report.php");
+        exit();
+    }
 
-function salesReportDateLabel($date) {
-    return date('F d, Y', strtotime($date));
+    $event_date = $log_row['record_date'];
+    $event_name = $log_row['buyer_name'];
+    $payment_method = $log_row['payment_method'];
+
+    $conn->begin_transaction();
+    try {
+        // 1. Return unsold stock to the master inventory naturally!
+        if ($qty_returned > 0) {
+            $conn->query("UPDATE inventory SET current_quantity = current_quantity + $qty_returned WHERE product_id = $prod_id");
+        }
+
+        // 2. Update the log to RECONCILED with the true sold/returned numbers
+        $conn->query("UPDATE inventory_outsourcing SET status = 'RECONCILED', quantity_out = $qty_sold, quantity_returned = $qty_returned WHERE record_id = $rec_id");
+
+        // 3. If this outsourced event is fully reconciled, prompt for reference/invoice and update linked transaction.
+        $should_prompt_reference = false;
+        if ($payment_method === 'Others') {
+            $stmt_pending = $conn->prepare("SELECT COUNT(*) as c FROM inventory_outsourcing WHERE payment_method = 'Others' AND buyer_name = ? AND record_date = ? AND status = 'PENDING'");
+            $stmt_pending->bind_param("ss", $event_name, $event_date);
+            $stmt_pending->execute();
+            $pending_count = 0;
+            $stmt_pending->bind_result($pending_count);
+            $stmt_pending->fetch();
+            $stmt_pending->close();
+
+            if ((int)$pending_count === 0) {
+                $stmt_trans = $conn->prepare("SELECT transaction_id FROM transactions WHERE transaction_type = 'OUTSOURCED' AND transaction_date = ? AND member_name = ? AND payment_status = 'PENDING' AND invoice_no = 'OUTSOURCED' ORDER BY transaction_id DESC LIMIT 1");
+                $stmt_trans->bind_param("ss", $event_date, $event_name);
+                $stmt_trans->execute();
+                $stmt_trans->bind_result($found_transaction_id);
+                if ($stmt_trans->fetch()) {
+                    $_SESSION['show_ref_modal'] = 1;
+                    $_SESSION['ref_transaction_id'] = (int)$found_transaction_id;
+                    $_SESSION['ref_event_name'] = $event_name;
+                    $_SESSION['ref_event_date'] = $event_date;
+                    $should_prompt_reference = true;
+                }
+                $stmt_trans->close();
+            }
+        }
+
+        $conn->commit();
+
+        $_SESSION['alert_title'] = "Event Reconciled";
+        $_SESSION['alert_message'] = "Stock has been successfully reconciled! <strong>{$qty_returned} items</strong> were returned to the master inventory.";
+        $_SESSION['alert_type'] = "success";
+
+        if ($payment_method === 'Others' && !$should_prompt_reference) {
+            // We reconciled, but can't link to a pending outsourced transaction.
+            $_SESSION['alert_message'] .= "<br><span class='text-xs text-gray-500'>Note: No matching pending outsourced transaction was found to finalize.</span>";
+        }
+
+        header("Location: outsourcing_report.php");
+        exit();
+    } catch (Exception $e) {
+        $conn->rollback();
+        $_SESSION['alert_title'] = "Reconciliation Failed";
+        $_SESSION['alert_message'] = "An error occurred while reconciling this event. Please try again.";
+        $_SESSION['alert_type'] = "error";
+        header("Location: outsourcing_report.php");
+        exit();
+    }
 }
 
 function salesReportQuantityText($row, $plain = false) {
@@ -292,6 +430,38 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         </div>
     </div>
 
+    <div id="referenceModal" class="fixed inset-0 z-[999] hidden items-center justify-center p-4 print:hidden">
+        <div class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm" onclick="cancelReferenceModal()"></div>
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md z-10 overflow-hidden transform transition-all">
+            <div class="bg-green-50 px-6 py-4 border-b border-green-100 flex justify-between items-center">
+                <h3 class="font-bold text-green-800"><i class="fas fa-receipt mr-2"></i>Finalize Outsourced Transaction</h3>
+                <button type="button" onclick="cancelReferenceModal()" class="text-green-400 hover:text-green-600"><i class="fas fa-times"></i></button>
+            </div>
+
+            <form action="outsourcing_report.php" method="POST" class="p-6">
+                <input type="hidden" name="finalize_outsource_payment" value="1">
+                <input type="hidden" name="transaction_id" value="<?= (int)($_SESSION['ref_transaction_id'] ?? 0) ?>">
+
+                <div class="mb-5 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Outsourced Event</div>
+                    <div class="font-bold text-gray-800 text-lg capitalize"><?= htmlspecialchars($_SESSION['ref_event_name'] ?? 'N/A') ?></div>
+                    <div class="mt-1 text-xs text-gray-500">Date: <?= htmlspecialchars($_SESSION['ref_event_date'] ?? '') ?></div>
+                </div>
+
+                <div class="mb-7">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Reference Number / Invoice Number <span class="text-red-500">*</span></label>
+                    <input type="text" name="reference_no" required maxlength="100" placeholder="Enter reference or invoice number" class="w-full rounded-md border border-gray-300 px-4 py-3 text-base font-semibold focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
+                    <p class="text-xs text-gray-400 mt-1 italic">This will be saved to the transaction and marked as COMPLETED.</p>
+                </div>
+
+                <div class="flex gap-3 justify-end">
+                    <button type="button" onclick="cancelReferenceModal()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm transition-colors">CANCEL</button>
+                    <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-md text-sm transition-colors shadow-md"><i class="fas fa-check mr-1"></i> SAVE & COMPLETE</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="flex h-screen w-full">
 
         <div id="mobile-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-40 hidden md:hidden transition-opacity print:hidden" onclick="toggleSidebar()"></div>
@@ -490,6 +660,19 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             overlay.classList.toggle('hidden');
         }
 
+        function openReferenceModal() {
+            const modal = document.getElementById('referenceModal');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            const input = modal.querySelector('input[name="reference_no"]');
+            if (input) input.focus();
+        }
+
+        function cancelReferenceModal() {
+            window.location.href = 'outsourcing_report.php?cancel_ref=1';
+        }
+
         // --- UNIFIED SEARCH & DATE FILTER LOGIC ---
         function filterTable() {
             let searchText = document.getElementById('logSearch').value.toLowerCase();
@@ -660,6 +843,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             unset($_SESSION['alert_message']);
             unset($_SESSION['alert_type']);
             ?>
+        <?php endif; ?>
+
+        <?php if (!empty($_SESSION['show_ref_modal']) && !empty($_SESSION['ref_transaction_id'])): ?>
+            document.addEventListener('DOMContentLoaded', () => {
+                openReferenceModal();
+            });
         <?php endif; ?>
     </script>
 </body>
